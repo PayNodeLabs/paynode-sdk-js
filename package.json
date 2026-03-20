@@ -1,39 +1,35 @@
 {
-  "name": "@paynode/sdk",
-  "version": "1.0.0",
-  "description": "[![npm version](https://badge.fury.io/js/%40paynode%2Fsdk.svg)](https://badge.fury.io/js/%40paynode%2Fsdk) [![PyPI version](https://img.shields.io/badge/pypi-coming_soon-yellow.svg)]() [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)]() [![Python](https://img.shields.io/badge/Python-Ready-blue.svg)]()",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "name": "@paynodelabs/sdk-js",
+  "version": "1.0.1",
+  "description": "The official JavaScript/TypeScript SDK for PayNode x402 protocol on Base L2.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "npx tsc",
-    "test": "jest"
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "ts-node tests/mainnet_live.ts"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/PayNodeLabs/paynode-sdk.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/PayNodeLabs/paynode-sdk/issues"
-  },
-  "homepage": "https://github.com/PayNodeLabs/paynode-sdk#readme",
+  "keywords": [
+    "paynode",
+    "x402",
+    "base",
+    "web3",
+    "payments",
+    "ai-agents"
+  ],
+  "author": "PayNodeLabs",
+  "license": "MIT",
   "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
-    "ethers": "^6.16.0",
-    "express": "^5.2.1"
+    "ethers": "^6.13.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^25.5.0",
-    "jest": "^30.3.0",
-    "ts-jest": "^29.4.6",
+    "dotenv": "^16.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.4.5",
+    "@types/node": "^20.12.12"
   }
 }

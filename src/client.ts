@@ -9,7 +9,9 @@ export class PayNodeAgentClient {
   private provider: ethers.JsonRpcProvider;
 
   private ERC20_ABI = [
-    "function approve(address spender, uint256 value) public returns (bool)"
+    "function approve(address spender, uint256 value) public returns (bool)",
+    "function allowance(address owner, address spender) public view returns (uint256)",
+    "function balanceOf(address account) public view returns (uint256)"
   ];
 
   private ROUTER_ABI = [
@@ -27,7 +29,6 @@ export class PayNodeAgentClient {
   async requestGate(url: string, options: RequestOptions = {}): Promise<Response> {
     const fetchOptions: RequestInit = { ...options };
     
-    // Handle JSON body convenience
     if (options.json && !fetchOptions.body) {
       fetchOptions.body = JSON.stringify(options.json);
       fetchOptions.headers = {
@@ -36,12 +37,10 @@ export class PayNodeAgentClient {
       };
     }
 
-    // 1. Initial Attempt
     let response = await fetch(url, fetchOptions);
 
-    // 2. Check for 402 Payment Required
     if (response.status === 402) {
-      console.log(`💡 [PayNode-JS] 402 Payment Required detected for ${url}. Initiating autonomous payment...`);
+      console.log(`💡 [PayNode-JS] 402 Payment Required detected. Handling autonomous payment...`);
       return await this.handlePaymentAndRetry(url, fetchOptions, response.headers);
     }
 
@@ -49,7 +48,6 @@ export class PayNodeAgentClient {
   }
 
   private async handlePaymentAndRetry(url: string, options: RequestInit, headers: Headers): Promise<Response> {
-    // Extract metadata
     const contractAddr = headers.get('x-paynode-contract');
     const merchantAddr = headers.get('x-paynode-merchant');
     const amountStr = headers.get('x-paynode-amount');
@@ -61,13 +59,11 @@ export class PayNodeAgentClient {
     }
 
     const amount = BigInt(amountStr);
-    const orderIdBytes = ethers.id(orderIdStr); // Keccak256 hash of orderId string
+    const orderIdBytes = ethers.id(orderIdStr);
 
-    // 1. Execute Chain Payment
     const txHash = await this.executeChainPayment(contractAddr, merchantAddr, tokenAddr, amount, orderIdBytes);
-    console.log(`✅ [PayNode-JS] Payment successful. TxHash: ${txHash}`);
+    console.log(`✅ [PayNode-JS] Payment confirmed on-chain: ${txHash}`);
 
-    // 2. Retry with Receipt
     const retryOptions: RequestInit = {
       ...options,
       headers: {
@@ -77,7 +73,6 @@ export class PayNodeAgentClient {
       }
     };
 
-    console.log(`🔄 [PayNode-JS] Retrying original request with receipt...`);
     return await fetch(url, retryOptions);
   }
 
@@ -88,16 +83,32 @@ export class PayNodeAgentClient {
     amount: bigint, 
     orderId: string
   ): Promise<string> {
-    // A. Approve
     const tokenContract = new ethers.Contract(tokenAddr, this.ERC20_ABI, this.wallet);
-    const approveTx = await tokenContract.approve(contractAddr, amount);
-    await approveTx.wait();
+    
+    // 1. Check Balance
+    const balance = await tokenContract.balanceOf(this.wallet.address);
+    if (balance < amount) {
+        throw new Error(`Insufficient USDC balance. Have: ${ethers.formatUnits(balance, 6)}, Need: ${ethers.formatUnits(amount, 6)}`);
+    }
 
-    // B. Pay
+    // 2. Check and Handle Allowance
+    const currentAllowance = await tokenContract.allowance(this.wallet.address, contractAddr);
+    if (currentAllowance < amount) {
+      console.log(`🔐 [PayNode-JS] Allowance too low (${currentAllowance}). Granting Infinite Approval to Router...`);
+      const approveTx = await tokenContract.approve(contractAddr, ethers.MaxUint256);
+      await approveTx.wait();
+      console.log(`🔓 [PayNode-JS] Infinite Approval confirmed.`);
+    }
+
+    // 3. Execute Payment
     const routerContract = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
-    const payTx = await routerContract.pay(tokenAddr, merchantAddr, amount, orderId);
+    
+    // Use manually specified gas limit to avoid estimateGas issues with some RPCs
+    const payTx = await routerContract.pay(tokenAddr, merchantAddr, amount, orderId, {
+        gasLimit: 200000 // Safe overhead for Base
+    });
+    
     const receipt = await payTx.wait();
-
     return receipt.hash;
   }
 }
