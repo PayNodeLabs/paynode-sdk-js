@@ -1,0 +1,39 @@
+{
+  "name": "@paynode/sdk",
+  "version": "1.0.0",
+  "description": "[![npm version](https://badge.fury.io/js/%40paynode%2Fsdk.svg)](https://badge.fury.io/js/%40paynode%2Fsdk) [![PyPI version](https://img.shields.io/badge/pypi-coming_soon-yellow.svg)]() [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)]() [![Python](https://img.shields.io/badge/Python-Ready-blue.svg)]()",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npx tsc",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PayNodeLabs/paynode-sdk.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/PayNodeLabs/paynode-sdk/issues"
+  },
+  "homepage": "https://github.com/PayNodeLabs/paynode-sdk#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
