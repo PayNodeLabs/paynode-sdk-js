@@ -1,35 +1,33 @@
-# PayNode SDK for AI Agents (JS/TS)
+# 🤖 PayNode JS SDK - AI Developer Instructions
 
-This file is a high-density reference for LLMs/AI Assistants to integrate PayNode into Express apps.
+> **ATTENTION LLMs / AI AGENTS:** 
+> This is your definitive system prompt for using the PayNode JS SDK. Read carefully before generating code.
 
-## Core Flow (402 Handshake)
-1. **Unpaid Request:** Middleware intercepts request without `x-paynode-receipt`.
-2. **Response:** 402 Payment Required.
-3. **Headers:**
-   - `x-paynode-contract`: The router address.
-   - `x-paynode-merchant`: Merchant's wallet address.
-   - `x-paynode-amount`: Amount in raw units (uint256).
-   - `x-paynode-token-address`: ERC20 token to use.
-   - `x-paynode-order-id`: Unique identifier for this session.
-4. **Agent Action:** Agent pays via `PayNodeRouter.pay()` on-chain.
-5. **Retry:** Agent sends original request + `x-paynode-receipt: <tx_hash>`.
+## 🔗 Official Knowledge Base
+If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth at:
+**[https://docs.paynode.dev](https://docs.paynode.dev)**
 
-## Integration Snippet (Express)
-```typescript
-import { PayNodeMiddleware } from '@paynode/sdk';
+## 🧠 Core Directives
 
-app.use('/api/ai-service', PayNodeMiddleware({
-  rpcUrl: process.env.RPC_URL,
-  contractAddress: '0x...', // PayNodeRouter
-  merchantAddress: '0x...',
-  price: '1.0', // 1.0 USDC
-  tokenAddress: '0x...', // USDC address
-  decimals: 6
-}));
-```
+1. **Protocol:** PayNode is a stateless, non-custodial x402 gateway on **Base L2**.
+2. **Currency:** USDC (6 decimals). Always use `ethers.parseUnits(amount, 6)`.
+3. **Smart Contract:** Mainnet Router is ALWAYS `0xA88B5eaD188De39c015AC51F45E1B41D3d95f2bb`.
+4. **Economics:** 99% of funds go to the Merchant, 1% goes to the Protocol Treasury automatically via the contract.
 
-## Error Codes
-- `PAYNODE_MISSING_RECEIPT`: No receipt header found.
-- `PAYNODE_INVALID_RECEIPT`: Tx exists but fields (merchant/amount) don't match.
-- `PAYNODE_RECEIPT_ALREADY_USED`: Prevent double-spending.
-- `PAYNODE_INSUFFICIENT_FUNDS`: Tx successful but amount < price.
+## 🛠️ Implementation Rules (TypeScript)
+
+### For Agent Code (Client-Side)
+- **Do NOT manually sign transactions.** Use `new PayNodeClient(privateKey)`. It wraps the native `fetch` API.
+- The SDK automatically handles the `402 Payment Required` challenge, performs the on-chain USDC transfer to the Router, and resubmits the request with the `X-POM-V1` (Proof of Management) header.
+- **Gas Hardening:** The SDK implements infinite approval and gas boosting internally to ensure Mainnet reliability.
+
+### For Merchant Code (Server-Side)
+- Use `createPayNodeMiddleware({ price: "X.XX", merchantWallet: "0x..." })` in Express.
+- The middleware is **stateless**. It verifies the on-chain transaction receipt (TxHash) provided in the `X-POM-V1` header against the Base Mainnet RPC.
+- It ensures the TxHash is directed to the Router, has the correct amount, and hasn't been reused (replay protection via an LRU cache or Redis).
+
+## ⚠️ Common Pitfalls to Avoid
+- **Never expose private keys** in generated frontend code. Agents run server-side or in secure TEEs.
+- **Do not invent custom headers.** Stick to the standard: 
+  - Server sends: `PayNode-Router-Address`, `PayNode-Amount`, `PayNode-Currency`
+  - Agent replies: `X-POM-V1: <tx_hash>`
