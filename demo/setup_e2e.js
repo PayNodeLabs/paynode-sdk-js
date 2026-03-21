@@ -1,10 +1,12 @@
+require('dotenv').config();
 const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
 
 async function main() {
   const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-  const deployer = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", provider);
+  const PRIVATE_KEY = process.env.PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+  const deployer = new ethers.Wallet(PRIVATE_KEY, provider);
 
   let nonce = await deployer.getNonce();
   console.log(`[Setup] Deployer: ${deployer.address}, Start Nonce: ${nonce}`);
