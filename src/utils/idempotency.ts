@@ -1,3 +1,5 @@
+import type { Redis } from 'ioredis';
+
 export interface IdempotencyStore {
   /**
    * Attempts to mark a transaction hash as used.
@@ -9,6 +11,7 @@ export interface IdempotencyStore {
 /**
  * Default implementation for MVP.
  * Uses a Map with expiration logic.
+ * @deprecated Use RedisIdempotencyStore for production environments.
  */
 export class MemoryIdempotencyStore implements IdempotencyStore {
   private cache: Map<string, number> = new Map();
@@ -37,5 +40,25 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
         this.cache.delete(key);
       }
     }
+  }
+}
+
+/**
+ * Production-ready implementation using Redis.
+ * Uses `SET txHash 1 NX EX ttlSeconds` for atomic check-and-set.
+ */
+export class RedisIdempotencyStore implements IdempotencyStore {
+  private redis: Redis;
+  private prefix: string;
+
+  constructor(redisClient: Redis, prefix: string = 'paynode:tx:') {
+    this.redis = redisClient;
+    this.prefix = prefix;
+  }
+
+  async checkAndSet(txHash: string, ttlSeconds: number): Promise<boolean> {
+    const key = `${this.prefix}${txHash}`;
+    const result = await this.redis.set(key, '1', 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
   }
 }

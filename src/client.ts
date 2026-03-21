@@ -15,7 +15,8 @@ export class PayNodeAgentClient {
   ];
 
   private ROUTER_ABI = [
-    "function pay(address token, address merchant, uint256 amount, bytes32 orderId) public"
+    "function pay(address token, address merchant, uint256 amount, bytes32 orderId) public",
+    "function payWithPermit(address payer, address token, address merchant, uint256 amount, bytes32 orderId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public"
   ];
 
   constructor(privateKey: string, rpcUrl: string) {
@@ -110,5 +111,107 @@ export class PayNodeAgentClient {
     
     const receipt = await payTx.wait();
     return receipt.hash;
+  }
+
+  /**
+   * Executes a payment using EIP-2612 Permit — single-tx approve + pay.
+   * The payer signs the permit offline, and any relayer (e.g. AI Agent) can submit it on-chain.
+   * @param contractAddr PayNode Router address
+   * @param payerAddress The address that holds the tokens and signed the permit
+   * @param tokenAddr ERC20 token with EIP-2612 support (e.g. USDC)
+   * @param merchantAddr Merchant receiving 99% of payment
+   * @param amount Token amount in smallest unit (e.g. 1000000 = 1 USDC)
+   * @param orderId Order identifier as bytes32
+   * @param deadline Unix timestamp after which the permit is invalid
+   * @param v ECDSA recovery id
+   * @param r ECDSA signature component
+   * @param s ECDSA signature component
+   */
+  async payWithPermit(
+    contractAddr: string,
+    payerAddress: string,
+    tokenAddr: string,
+    merchantAddr: string,
+    amount: bigint,
+    orderId: string,
+    deadline: number,
+    v: number,
+    r: string,
+    s: string
+  ): Promise<string> {
+    const routerContract = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
+
+    const tx = await routerContract.payWithPermit(
+      payerAddress,
+      tokenAddr,
+      merchantAddr,
+      amount,
+      orderId,
+      deadline,
+      v,
+      r,
+      s,
+      { gasLimit: 300000 }
+    );
+
+    const receipt = await tx.wait();
+    return receipt.hash;
+  }
+
+  /**
+   * Helper: Generate an EIP-2612 Permit signature for USDC/ERC20.
+   * The wallet that calls this must be the token holder (payer).
+   * @returns { deadline, v, r, s } to pass to payWithPermit
+   */
+  async signPermit(
+    tokenAddr: string,
+    spenderAddr: string,
+    amount: bigint,
+    deadlineSeconds: number = 3600
+  ): Promise<{ deadline: number; v: number; r: string; s: string }> {
+    const deadline = Math.floor(Date.now() / 1000) + deadlineSeconds;
+
+    // EIP-2612 domain & types
+    const tokenContract = new ethers.Contract(tokenAddr, [
+      "function name() view returns (string)",
+      "function nonces(address owner) view returns (uint256)",
+      "function DOMAIN_SEPARATOR() view returns (bytes32)"
+    ], this.wallet);
+
+    const [name, nonce, chainId] = await Promise.all([
+      tokenContract.name(),
+      tokenContract.nonces(this.wallet.address),
+      this.provider.getNetwork().then(n => n.chainId)
+    ]);
+
+    const domain = {
+      name,
+      version: '2', // USDC uses version "2"
+      chainId: Number(chainId),
+      verifyingContract: tokenAddr
+    };
+
+    const types = {
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ]
+    };
+
+    const value = {
+      owner: this.wallet.address,
+      spender: spenderAddr,
+      value: amount,
+      nonce,
+      deadline
+    };
+
+    const sig = await this.wallet.signTypedData(domain, types, value);
+    const { v, r, s } = ethers.Signature.from(sig);
+
+    return { deadline, v, r, s };
   }
 }
