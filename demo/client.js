@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { ethers } = require('ethers');
 
 async function main() {
@@ -6,7 +7,8 @@ async function main() {
   
   // Use a sample wallet from Anvil (usually has 10000 ETH)
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", provider);
+  const PRIVATE_KEY = process.env.PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
   console.log(`[AI Agent] Client wallet: ${wallet.address}`);
 
