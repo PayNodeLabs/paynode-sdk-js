@@ -1,5 +1,6 @@
 import { JsonRpcProvider, Contract, Interface, EventLog, Log } from 'ethers';
 import * as crypto from 'crypto';
+import { PAYNODE_ROUTER_ADDRESS } from '../constants';
 
 /**
  * Configuration for the PayNode Webhook Notifier.
@@ -7,8 +8,8 @@ import * as crypto from 'crypto';
 export interface WebhookConfig {
   /** RPC URL to connect to the chain */
   rpcUrl: string;
-  /** PayNode Router contract address to monitor */
-  contractAddress: string;
+  /** PayNode Router contract address to monitor (Defaults to Mainnet) */
+  contractAddress?: string;
   /** The merchant's webhook endpoint URL */
   webhookUrl: string;
   /** Secret key for HMAC-SHA256 signature (header: x-paynode-signature) */
@@ -59,7 +60,7 @@ const PAYNODE_ABI = [
  * ```ts
  * const notifier = new PayNodeWebhookNotifier({
  *   rpcUrl: 'https://mainnet.base.org',
- *   contractAddress: '0xA88B5eaD188De39c015AC51F45E1B41D3d95f2bb',
+ *   contractAddress: '0x92e20164FC457a2aC35f53D06268168e6352b200',
  *   webhookUrl: 'https://myshop.com/api/paynode-webhook',
  *   webhookSecret: 'whsec_mysecretkey123',
  * });
@@ -78,15 +79,18 @@ export class PayNodeWebhookNotifier {
 
   constructor(config: WebhookConfig) {
     if (!config.rpcUrl) throw new Error('rpcUrl is required');
-    if (!config.contractAddress) throw new Error('contractAddress is required');
     if (!config.webhookUrl) throw new Error('webhookUrl is required');
     if (!config.webhookSecret) throw new Error('webhookSecret is required');
 
-    this.config = config;
+    this.config = {
+      ...config,
+      contractAddress: config.contractAddress || PAYNODE_ROUTER_ADDRESS
+    } as any;
+
     this.pollInterval = config.pollIntervalMs || 5000;
     this.provider = new JsonRpcProvider(config.rpcUrl, config.chainId);
     this.iface = new Interface(PAYNODE_ABI);
-    this.contract = new Contract(config.contractAddress, PAYNODE_ABI, this.provider);
+    this.contract = new Contract(this.config.contractAddress, PAYNODE_ABI, this.provider);
   }
 
   /**

@@ -11,7 +11,7 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 
 1. **Protocol:** PayNode is a stateless, non-custodial x402 gateway on **Base L2**.
 2. **Currency:** USDC (6 decimals). Always use `ethers.parseUnits(amount, 6)`.
-3. **Smart Contract:** Mainnet Router is ALWAYS `0xA88B5eaD188De39c015AC51F45E1B41D3d95f2bb`.
+3. **Smart Contract:** Mainnet Router is ALWAYS `0x92e20164FC457a2aC35f53D06268168e6352b200`.
 4. **Economics:** 99% of funds go to the Merchant, 1% goes to the Protocol Treasury automatically via the contract.
 
 ## 🛠️ Implementation Rules (TypeScript)
