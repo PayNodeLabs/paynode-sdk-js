@@ -1,18 +1,16 @@
 export enum ErrorCode {
-  RPC_ERROR = "RPC_ERROR",
-  INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS",
-  AMOUNT_TOO_LOW = "AMOUNT_TOO_LOW",
-  TOKEN_NOT_ACCEPTED = "TOKEN_NOT_ACCEPTED",
-  TRANSACTION_FAILED = "TRANSACTION_FAILED",
-  DUPLICATE_TRANSACTION = "DUPLICATE_TRANSACTION",
-  INVALID_RECEIPT = "INVALID_RECEIPT",
-  INTERNAL_ERROR = "INTERNAL_ERROR",
-  // Verification specific
-  TRANSACTION_NOT_FOUND = "TRANSACTION_NOT_FOUND",
-  WRONG_CONTRACT = "WRONG_CONTRACT",
-  ORDER_MISMATCH = "ORDER_MISMATCH",
-  RECEIPT_ALREADY_USED = "RECEIPT_ALREADY_USED",
-  MISSING_RECEIPT = "MISSING_RECEIPT"
+  RpcError = "RpcError",
+  InsufficientFunds = "InsufficientFunds",
+  AmountTooLow = "AmountTooLow",
+  TokenNotAccepted = "TokenNotAccepted",
+  TransactionFailed = "TransactionFailed",
+  DuplicateTransaction = "DuplicateTransaction",
+  InvalidReceipt = "InvalidReceipt",
+  InternalError = "InternalError",
+  TransactionNotFound = "TransactionNotFound",
+  WrongContract = "WrongContract",
+  OrderMismatch = "OrderMismatch",
+  MissingReceipt = "MissingReceipt",
 }
 
 export class PayNodeException extends Error {

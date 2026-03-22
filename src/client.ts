@@ -59,7 +59,7 @@ export class PayNodeAgentClient {
       return response;
     } catch (error) {
       if (error instanceof PayNodeException) throw error;
-      throw new PayNodeException(`Failed to connect to any provided RPC nodes.`, ErrorCode.RPC_ERROR, error);
+      throw new PayNodeException(`Failed to connect to any provided RPC nodes.`, ErrorCode.RpcError, error);
     }
   }
 
@@ -71,14 +71,14 @@ export class PayNodeAgentClient {
     const orderIdStr = headers.get('x-paynode-order-id');
 
     if (!contractAddr || !merchantAddr || !amountStr || !tokenAddr || !orderIdStr) {
-      throw new PayNodeException("Malformed 402 headers: missing metadata", ErrorCode.INTERNAL_ERROR);
+      throw new PayNodeException("Malformed 402 headers: missing metadata", ErrorCode.InternalError);
     }
 
     const amount = BigInt(amountStr);
     
     // v1.3 Constraint: Min payment protection
     if (amount < 1000n) {
-      throw new PayNodeException("Payment amount is below the protocol minimum (1000).", ErrorCode.AMOUNT_TOO_LOW);
+      throw new PayNodeException("Payment amount is below the protocol minimum (1000).", ErrorCode.AmountTooLow);
     }
 
     let txHash: string;
@@ -90,7 +90,7 @@ export class PayNodeAgentClient {
       ]);
 
       if (balance < amount) {
-        throw new PayNodeException("Wallet lacks USDC or ETH for gas.", ErrorCode.INSUFFICIENT_FUNDS);
+        throw new PayNodeException("Wallet lacks USDC or ETH for gas.", ErrorCode.InsufficientFunds);
       }
 
       // Protocol v1.3: Permit-First Execution
@@ -102,7 +102,7 @@ export class PayNodeAgentClient {
       }
     } catch (error) {
       if (error instanceof PayNodeException) throw error;
-      throw new PayNodeException(`On-chain transaction reverted or failed.`, ErrorCode.TRANSACTION_FAILED, error);
+      throw new PayNodeException(`On-chain transaction reverted or failed.`, ErrorCode.TransactionFailed, error);
     }
 
     console.log(`✅ [PayNode-JS] Payment confirmed on-chain: ${txHash}`);
