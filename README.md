@@ -41,16 +41,24 @@ The SDK includes a full merchant/agent demonstration in the `examples/` director
 
 ```bash
 cp .env.example .env
-# Edit .env with your private key and RPC URLs
+# Edit .env with your PRIVATE_KEY and RPC_URL
 ```
 
-### 2. Run the Merchant Server (Express)
+### 2. Get Test Tokens (Required for Base Sepolia)
+
+If you're testing on Sepolia, run the helper script to mint 1,000 mock USDC:
+
+```bash
+npx ts-node examples/mint-test-tokens.ts
+```
+
+### 3. Run the Merchant Server (Express)
 
 ```bash
 npx ts-node examples/express-server.ts
 ```
 
-### 3. Run the Agent Client
+### 4. Run the Agent Client
 
 In another terminal:
 
