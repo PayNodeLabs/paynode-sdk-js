@@ -1,12 +1,21 @@
 export enum ErrorCode {
-  TRANSACTION_NOT_FOUND = "TRANSACTION_NOT_FOUND",
-  TRANSACTION_FAILED = "TRANSACTION_FAILED",
-  WRONG_CONTRACT = "WRONG_CONTRACT",
-  ORDER_MISMATCH = "ORDER_MISMATCH",
-  INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS",
-  RECEIPT_ALREADY_USED = "RECEIPT_ALREADY_USED",
-  INVALID_RECEIPT = "INVALID_RECEIPT",
-  MISSING_RECEIPT = "MISSING_RECEIPT",
-  TOKEN_NOT_ACCEPTED = "TOKEN_NOT_ACCEPTED",
-  INTERNAL_ERROR = "INTERNAL_ERROR"
+  RpcError = "RpcError",
+  InsufficientFunds = "InsufficientFunds",
+  AmountTooLow = "AmountTooLow",
+  TokenNotAccepted = "TokenNotAccepted",
+  TransactionFailed = "TransactionFailed",
+  DuplicateTransaction = "DuplicateTransaction",
+  InvalidReceipt = "InvalidReceipt",
+  InternalError = "InternalError",
+  TransactionNotFound = "TransactionNotFound",
+  WrongContract = "WrongContract",
+  OrderMismatch = "OrderMismatch",
+  MissingReceipt = "MissingReceipt",
+}
+
+export class PayNodeException extends Error {
+  constructor(public message: string, public code: ErrorCode, public details?: any) {
+    super(message);
+    this.name = "PayNodeException";
+  }
 }

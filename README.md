@@ -21,35 +21,72 @@ npm install @paynodelabs/sdk-js ethers
 ### Agent Client (Payer)
 
 ```typescript
-import { PayNodeClient } from '@paynodelabs/sdk-js';
+import { PayNodeAgentClient } from "@paynodelabs/sdk-js";
 
-const client = new PayNodeClient('YOUR_AGENT_PRIVATE_KEY');
+const client = new PayNodeAgentClient("YOUR_AGENT_PRIVATE_KEY", ["https://mainnet.base.org", "https://rpc.ankr.com/base"]);
 
 async function main() {
-    // Automatically handles 402 challenges, pays USDC, and retries the request
-    const response = await client.request('https://api.merchant.com/premium-data');
-    console.log(await response.text());
+  // Automatically handles 402 challenges, pays USDC, and retries the request
+  const response = await client.requestGate("https://api.merchant.com/premium-data");
+  console.log(await response.text());
 }
 main();
 ```
 
-### Merchant Middleware (Receiver)
+## 🚀 Run the Demo
 
-```typescript
-import express from 'express';
-import { createPayNodeMiddleware } from '@paynodelabs/sdk-js';
+The SDK includes a full merchant/agent demonstration in the `examples/` directory.
 
-const app = express();
+### 1. Setup Environment
 
-const requirePayment = createPayNodeMiddleware({
-    price: "1.50", // 1.50 USDC
-    merchantWallet: "0xYourWalletAddress..."
-});
-
-app.get('/premium-data', requirePayment, (req, res) => {
-    res.json({ secret: "This is paid M2M data." });
-});
+```bash
+cp .env.example .env
+# Edit .env with your PRIVATE_KEY and RPC_URL
 ```
 
+### 2. Get Test Tokens (Required for Base Sepolia)
+
+If you're testing on Sepolia, run the helper script to mint 1,000 mock USDC:
+
+```bash
+npx ts-node examples/mint-test-tokens.ts
+```
+
+### 3. Run the Merchant Server (Express)
+
+```bash
+npx ts-node examples/express-server.ts
+```
+
+### 4. Run the Agent Client
+
+In another terminal:
+
+```bash
+npx ts-node examples/agent-client.ts
+```
+
+The demo will perform a full loop: `402 Handshake -> On-chain Payment -> 200 Verification`.
+
 ---
-*Built for the Autonomous AI Economy by PayNodeLabs.*
+
+## 📦 Publishing to NPM
+
+To publish a new version of the SDK:
+
+1. **Build the project**:
+   ```bash
+   npm run build
+   ```
+2. **Login to NPM** (if not already):
+   ```bash
+   npm login
+   ```
+3. **Publish**:
+   ```bash
+   npm publish --access public
+   ```
+
+---
+
+_Built for the Autonomous AI Economy by PayNodeLabs._

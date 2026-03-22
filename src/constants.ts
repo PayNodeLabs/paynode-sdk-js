@@ -5,3 +5,12 @@ export const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 export const BASE_USDC_ADDRESS_SANDBOX = "0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798";
 export const PROTOCOL_TREASURY = "0x598bF63F5449876efafa7b36b77Deb2070621C0E";
 export const PROTOCOL_FEE_BPS = 100;
+export const MIN_PAYMENT_AMOUNT = BigInt(1000);
+
+export const BASE_RPC_URLS = ["https://mainnet.base.org", "https://base.meowrpc.com", "https://1rpc.io/base"];
+export const BASE_RPC_URLS_SANDBOX = ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"];
+
+export const ACCEPTED_TOKENS: Record<number, string[]> = {
+    8453: ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
+    84532: ["0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798"]
+};

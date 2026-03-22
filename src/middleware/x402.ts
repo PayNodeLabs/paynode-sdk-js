@@ -21,6 +21,7 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
   const verifier = new PayNodeVerifier({ 
     rpcUrls: options.rpcUrls, 
     chainId: options.chainId,
+    contractAddress: options.contractAddress,
     store: options.store
   });
 
@@ -62,7 +63,7 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
       }
       return res.status(402).json({ 
         error: "Payment Required",
-        code: ErrorCode.MISSING_RECEIPT,
+        code: ErrorCode.MissingReceipt,
         message: "Please pay to PayNode contract and provide 'x-paynode-receipt' header.",
         amount: options.price,
         currency: options.currency
@@ -84,7 +85,7 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
     } else {
       return res.status(403).json({ 
         error: "Forbidden",
-        code: result.error?.code || ErrorCode.INVALID_RECEIPT,
+        code: result.error?.code || ErrorCode.InvalidReceipt,
         message: result.error?.message || "Invalid receipt"
       });
     }

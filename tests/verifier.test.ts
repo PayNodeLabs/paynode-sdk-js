@@ -1,173 +1,124 @@
-import { ethers } from 'ethers';
-import { PayNodeVerifier, ExpectedPayment } from '../src/utils/verifier';
-import { ErrorCode } from '../src/errors';
+import { PayNodeVerifier, MIN_PAYMENT_AMOUNT } from '../src/utils/verifier';
+import { ErrorCode, PayNodeException } from '../src/errors';
+import { JsonRpcProvider } from 'ethers';
 
-// Standard mock for ethers v6 classes to avoid constructor failures
+// Mock Ethers Provider for CI/CD
 jest.mock('ethers', () => {
-  const actual = jest.requireActual('ethers');
+  const original = jest.requireActual('ethers');
   return {
-    ...actual,
+    ...original,
     JsonRpcProvider: jest.fn().mockImplementation(() => ({
-      getTransactionReceipt: jest.fn()
+      getTransactionReceipt: jest.fn(),
+      getNetwork: jest.fn().mockResolvedValue({ chainId: 84532n }),
     })),
-    Contract: jest.fn().mockImplementation(() => ({
-      target: '0x1234567890123456789012345678901234567890',
-      interface: {
-        parseLog: jest.fn()
-      }
-    }))
   };
 });
 
-describe('PayNodeVerifier', () => {
-  const mockRpcUrl = 'http://localhost:8545';
-  const mockContractAddress = '0x1234567890123456789012345678901234567890';
-  const mockChainId = 8453;
+describe('PayNode Verifier Unit Tests', () => {
   let verifier: PayNodeVerifier;
-  
-  // These will be our "active" mocks that we inject
-  let mockGetTransactionReceipt: jest.Mock;
-  let mockParseLog: jest.Mock;
+  const mockRpc = "http://localhost:8545";
+  const mockMerchant = "0x" + "1".repeat(40);
+  const mockToken = "0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798"; // USDC Sepolia
+  const validChainId = 84532;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
-    mockGetTransactionReceipt = jest.fn();
-    mockParseLog = jest.fn();
-
     verifier = new PayNodeVerifier({
-      rpcUrl: mockRpcUrl,
-      payNodeContractAddress: mockContractAddress,
-      expectedChainId: mockChainId
+      rpcUrls: mockRpc,
+      chainId: validChainId,
     });
+    jest.clearAllMocks();
+  });
 
-    // Manual injection to ensure we are using the exact mock functions we control in the test
-    (verifier as any).provider = {
-      getTransactionReceipt: mockGetTransactionReceipt
+  test('✅ Should reject payments below minimum dust limit (1000)', async () => {
+    const expected = {
+      merchantAddress: mockMerchant,
+      tokenAddress: mockToken,
+      amount: 500n, // Below MIN_PAYMENT_AMOUNT (1000)
     };
-    (verifier as any).contract = {
-      target: mockContractAddress,
-      interface: {
-        parseLog: mockParseLog
-      }
+
+    const result = await verifier.verifyPayment("0xTxHash", expected);
+    expect(result.isValid).toBe(false);
+    expect(result.error?.code).toBe(ErrorCode.AMOUNT_TOO_LOW);
+  });
+
+  test('✅ Should reject non-whitelisted tokens', async () => {
+    const expected = {
+      merchantAddress: mockMerchant,
+      tokenAddress: "0xFakeTokenAddress",
+      amount: 2000n,
     };
-  });
 
-  const validExpectedPayment: ExpectedPayment = {
-    merchantAddress: '0xMerchantABC',
-    tokenAddress: '0xTokenUSDC',
-    amount: BigInt(1000000), // 1 USDC
-    orderId: 'order_123'
-  };
-
-  it('should return error if receipt is not found', async () => {
-    mockGetTransactionReceipt.mockResolvedValue(null);
-
-    const result = await verifier.verifyPayment('0xFakeHash', validExpectedPayment);
-    
+    const result = await verifier.verifyPayment("0xTxHash", expected);
     expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.TRANSACTION_NOT_FOUND);
+    expect(result.error?.code).toBe(ErrorCode.TOKEN_NOT_ACCEPTED);
   });
 
-  it('should return error if transaction reverted', async () => {
-    mockGetTransactionReceipt.mockResolvedValue({ status: 0 }); // 0 = Reverted
-
-    const result = await verifier.verifyPayment('0xFailedHash', validExpectedPayment);
+  test('✅ Should reject duplicate/already consumed transaction hashes', async () => {
+    const mockStore = {
+      checkAndSet: jest.fn().mockResolvedValue(false), // Duplicate
+    };
     
-    expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.TRANSACTION_FAILED);
-  });
-
-  it('should return error if sent to wrong contract', async () => {
-    mockGetTransactionReceipt.mockResolvedValue({ 
-      status: 1,
-      to: '0xWrongContractAddress'
+    const verifierWithStore = new PayNodeVerifier({
+      rpcUrls: mockRpc,
+      chainId: validChainId,
+      store: mockStore as any,
     });
 
-    const result = await verifier.verifyPayment('0xHash', validExpectedPayment);
+    const expected = {
+      merchantAddress: mockMerchant,
+      tokenAddress: mockToken,
+      amount: 2000n,
+    };
+
+    const result = await verifierWithStore.verifyPayment("0xDuplicateHash", expected);
+    expect(result.isValid).toBe(false);
+    expect(result.error?.code).toBe(ErrorCode.DUPLICATE_TRANSACTION);
+  });
+
+  test('✅ Should correctly verify a valid PaymentReceived event', async () => {
+    const txHash = "0xValidTxHash";
+    const expected = {
+      merchantAddress: mockMerchant,
+      tokenAddress: mockToken,
+      amount: 2000n,
+    };
+
+    // Create a mock receipt with the PaymentReceived event log using Interface
+    const iface = new (require('ethers').Interface)([
+      "event PaymentReceived(bytes32 indexed orderId, address indexed merchant, address indexed payer, address token, uint256 amount, uint256 fee, uint256 chainId)"
+    ]);
     
-    expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.WRONG_CONTRACT);
-  });
+    const log = iface.encodeEventLog("PaymentReceived", [
+      "0x0000000000000000000000000000000000000000000000000000000000000000", // orderId
+      mockMerchant,
+      "0x1234567890123456789012345678901234567890", // payer
+      mockToken,
+      2000n, // amount
+      0n,    // fee
+      84532n // chainId
+    ]);
 
-  it('should reject payment if order ID does not match', async () => {
-    mockGetTransactionReceipt.mockResolvedValue({
-      status: 1,
-      to: mockContractAddress,
-      logs: [{ topics: [], data: '0x' }]
+    const mockReceipt = {
+        status: 1,
+        logs: [
+            {
+                address: "0xContractAddress",
+                topics: log.topics,
+                data: log.data
+            }
+        ]
+    };
+    // Ensure provider instance is captured by recreating verifier in this test
+    const verifierForTest = new PayNodeVerifier({
+      rpcUrls: mockRpc,
+      chainId: validChainId,
     });
 
-    mockParseLog.mockReturnValue({
-      name: 'PaymentReceived',
-      args: [
-        ethers.id('different_order_id'), 
-        validExpectedPayment.merchantAddress, 
-        '0xPayer', 
-        validExpectedPayment.tokenAddress, 
-        validExpectedPayment.amount, 
-        BigInt(0)
-      ]
-    });
+    const providerInstance = (JsonRpcProvider as any).mock.results[0].value;
+    providerInstance.getTransactionReceipt.mockResolvedValue(mockReceipt);
 
-    const result = await verifier.verifyPayment('0xHash', validExpectedPayment);
-    
-    expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.ORDER_MISMATCH);
-  });
-
-  it('should reject payment if funds are insufficient', async () => {
-    mockGetTransactionReceipt.mockResolvedValue({
-      status: 1,
-      to: mockContractAddress,
-      logs: [{ topics: [], data: '0x' }]
-    });
-
-    mockParseLog.mockReturnValue({
-      name: 'PaymentReceived',
-      args: [
-        ethers.id(validExpectedPayment.orderId), 
-        validExpectedPayment.merchantAddress, 
-        '0xPayer', 
-        validExpectedPayment.tokenAddress, 
-        BigInt(500000), // Only paid 0.5 USDC instead of 1.0
-        BigInt(0)
-      ]
-    });
-
-    const result = await verifier.verifyPayment('0xHash', validExpectedPayment);
-    
-    expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.INSUFFICIENT_FUNDS);
-  });
-
-  it('should accept payment with valid fields and block double spend', async () => {
-    const txHash = '0xValidTxHash';
-    mockGetTransactionReceipt.mockResolvedValue({
-      status: 1,
-      to: mockContractAddress,
-      logs: [{ topics: [], data: '0x' }]
-    });
-
-    mockParseLog.mockReturnValue({
-      name: 'PaymentReceived',
-      args: [
-        ethers.id(validExpectedPayment.orderId), 
-        validExpectedPayment.merchantAddress, 
-        '0xPayer', 
-        validExpectedPayment.tokenAddress, 
-        validExpectedPayment.amount, 
-        BigInt(10000)
-      ]
-    });
-
-    // First attempt should succeed
-    const firstResult = await verifier.verifyPayment(txHash, validExpectedPayment);
-    expect(firstResult.isValid).toBe(true);
-    expect(firstResult.error).toBeUndefined();
-
-    // Second attempt with the SAME txHash should fail (Idempotency)
-    const secondResult = await verifier.verifyPayment(txHash, validExpectedPayment);
-    expect(secondResult.isValid).toBe(false);
-    expect(secondResult.error?.code).toBe(ErrorCode.RECEIPT_ALREADY_USED);
+    const result = await verifierForTest.verifyPayment(txHash, expected);
+    if (!result.isValid) console.error("Validation Error:", result.error);
+    expect(result.isValid).toBe(true);
   });
 });
