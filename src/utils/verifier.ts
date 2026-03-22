@@ -1,4 +1,4 @@
-import { ErrorCode } from '../errors';
+import { ErrorCode, PayNodeException } from '../errors';
 import { JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { IdempotencyStore } from './idempotency';
 
@@ -34,7 +34,6 @@ export interface ExpectedPayment {
   tokenAddress: string;
   amount: string | number | bigint;
   orderId?: string;
-  verifyDepegPrice?: boolean; // placeholder for depeg check
 }
 
 const PAYNODE_ABI = [
@@ -51,7 +50,7 @@ export class PayNodeVerifier {
 
   constructor(config: PayNodeVerifierConfig) {
     if (!config.rpcUrls || (Array.isArray(config.rpcUrls) && config.rpcUrls.length === 0)) {
-      throw new Error("rpcUrls must be provided");
+      throw new PayNodeException("Failed to connect to any provided RPC nodes.", ErrorCode.RPC_ERROR);
     }
     
     // Support RpcPool / FallbackProvider
@@ -71,8 +70,6 @@ export class PayNodeVerifier {
     this.chainId = config.chainId;
     this.store = config.store;
 
-    // Build accepted token set: user-provided or chain-default
-    // acceptedTokens=undefined → use chain default; acceptedTokens=[] → explicitly disable whitelist
     let tokenList: string[] | undefined;
     if (config.acceptedTokens !== undefined) {
       tokenList = config.acceptedTokens;
@@ -84,35 +81,34 @@ export class PayNodeVerifier {
     }
   }
 
-  async verifyPayment(txHash: string, expected: ExpectedPayment): Promise<{ isValid: boolean; error?: { code: ErrorCode; message: string } }> {
+  async verifyPayment(txHash: string, expected: ExpectedPayment): Promise<{ isValid: boolean; error?: PayNodeException }> {
     try {
       // 0. Dust Exploit Check (Minimum Payment)
       const expectedAmount = BigInt(expected.amount);
       if (expectedAmount < MIN_PAYMENT_AMOUNT) {
-        return { isValid: false, error: { code: ErrorCode.AMOUNT_TOO_LOW, message: `Payment amount ${expected.amount} is below the minimum threshold of ${MIN_PAYMENT_AMOUNT}.` } };
+        return { isValid: false, error: new PayNodeException("Payment amount is below the protocol minimum (1000).", ErrorCode.AMOUNT_TOO_LOW) };
       }
 
       // 1. Token Whitelist Check (Anti-FakeToken)
       if (this.acceptedTokens && !this.acceptedTokens.has(expected.tokenAddress.toLowerCase())) {
-        return { isValid: false, error: { code: ErrorCode.TOKEN_NOT_ACCEPTED, message: `Token ${expected.tokenAddress} is not in the accepted whitelist.` } };
+        return { isValid: false, error: new PayNodeException("The provided token address is not in the whitelist.", ErrorCode.TOKEN_NOT_ACCEPTED) };
       }
 
       // 1. Idempotency Check
       if (this.store) {
-        // Assume TTL of 24 hours for replay protection
         const isNew = await this.store.checkAndSet(txHash, 86400);
         if (!isNew) {
-          return { isValid: false, error: { code: ErrorCode.RECEIPT_ALREADY_USED, message: 'Transaction hash has already been consumed.' } };
+          return { isValid: false, error: new PayNodeException("This transaction hash has already been consumed.", ErrorCode.DUPLICATE_TRANSACTION) };
         }
       }
 
       // 2. Fetch Receipt
       const receipt = await this.provider.getTransactionReceipt(txHash);
       if (!receipt) {
-        return { isValid: false, error: { code: ErrorCode.TRANSACTION_NOT_FOUND, message: "Transaction not found on-chain." } };
+        return { isValid: false, error: new PayNodeException("The provided receipt (TxHash) is malformed or invalid.", ErrorCode.INVALID_RECEIPT) };
       }
       if (receipt.status !== 1) {
-        return { isValid: false, error: { code: ErrorCode.TRANSACTION_FAILED, message: "Transaction reverted on-chain." } };
+        return { isValid: false, error: new PayNodeException("On-chain transaction reverted or failed.", ErrorCode.TRANSACTION_FAILED) };
       }
 
       // 3. Parse Logs
@@ -130,45 +126,36 @@ export class PayNodeVerifier {
       }
 
       if (!paymentLog) {
-        return { isValid: false, error: { code: ErrorCode.ORDER_MISMATCH, message: "No PaymentReceived event found in transaction." } };
+        return { isValid: false, error: new PayNodeException("No valid PaymentReceived event found in transaction.", ErrorCode.INVALID_RECEIPT) };
       }
 
       const args = paymentLog.parsed.args;
 
       // 4. Verify Merchant
       if (args.merchant.toLowerCase() !== expected.merchantAddress.toLowerCase()) {
-        return { isValid: false, error: { code: ErrorCode.ORDER_MISMATCH, message: `Merchant mismatch. Expected ${expected.merchantAddress}, got ${args.merchant}` } };
+        return { isValid: false, error: new PayNodeException("Payment went to a different merchant.", ErrorCode.INVALID_RECEIPT) };
       }
 
       // 5. Verify Token
       if (args.token.toLowerCase() !== expected.tokenAddress.toLowerCase()) {
-        return { isValid: false, error: { code: ErrorCode.ORDER_MISMATCH, message: `Token mismatch. Expected ${expected.tokenAddress}, got ${args.token}` } };
+        return { isValid: false, error: new PayNodeException("Payment used unexpected token.", ErrorCode.INVALID_RECEIPT) };
       }
 
       // 6. Verify Amount
       if (BigInt(args.amount) < BigInt(expected.amount)) {
-        return { isValid: false, error: { code: ErrorCode.INSUFFICIENT_FUNDS, message: `Expected amount ${expected.amount}, received ${args.amount}` } };
+        return { isValid: false, error: new PayNodeException("Payment amount is below required price.", ErrorCode.INVALID_RECEIPT) };
       }
 
       // 7. Verify ChainId (Cross-chain replay protection)
       const expectedChainId = BigInt(this.chainId || (await this.provider.getNetwork()).chainId);
       if (BigInt(args.chainId) !== expectedChainId) {
-        return { isValid: false, error: { code: ErrorCode.ORDER_MISMATCH, message: "ChainId mismatch. Invalid network." } };
-      }
-
-      // 8. Order Id Check (Optional)
-      if (expected.orderId) {
-        // Contract orderId is bytes32. Just comparing strings directly if it was passed cleanly, or checking startsWith etc.
-        // Ethers returns bytes32 as 0x-prefixed hex string. We should format expected to bytes32 if it's text.
-        // For simplicity, assume they match format or we enforce formatting in the caller.
-        if (args.orderId !== expected.orderId) {
-           return { isValid: false, error: { code: ErrorCode.ORDER_MISMATCH, message: "OrderId mismatch." } };
-        }
+        return { isValid: false, error: new PayNodeException("ChainId mismatch. Invalid network.", ErrorCode.INVALID_RECEIPT) };
       }
 
       return { isValid: true };
     } catch (e: any) {
-      return { isValid: false, error: { code: ErrorCode.INTERNAL_ERROR, message: e.message } };
+      if (e instanceof PayNodeException) return { isValid: false, error: e };
+      return { isValid: false, error: new PayNodeException(`An unexpected error occurred: ${e.message}`, ErrorCode.INTERNAL_ERROR) };
     }
   }
 }

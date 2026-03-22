@@ -21,17 +21,44 @@ npm install @paynodelabs/sdk-js ethers
 ### Agent Client (Payer)
 
 ```typescript
-import { PayNodeAgentClient } from '@paynodelabs/sdk-js';
+import { PayNodeAgentClient } from "@paynodelabs/sdk-js";
 
-const client = new PayNodeAgentClient('YOUR_AGENT_PRIVATE_KEY', 'https://mainnet.base.org');
+const client = new PayNodeAgentClient("YOUR_AGENT_PRIVATE_KEY", ["https://mainnet.base.org", "https://rpc.ankr.com/base"]);
 
 async function main() {
-    // Automatically handles 402 challenges, pays USDC, and retries the request
-    const response = await client.requestGate('https://api.merchant.com/premium-data');
-    console.log(await response.text());
+  // Automatically handles 402 challenges, pays USDC, and retries the request
+  const response = await client.requestGate("https://api.merchant.com/premium-data");
+  console.log(await response.text());
 }
 main();
 ```
+
+## 🚀 Run the Demo
+
+The SDK includes a full merchant/agent demonstration in the `examples/` directory.
+
+### 1. Setup Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your private key and RPC URLs
+```
+
+### 2. Run the Merchant Server (Express)
+
+```bash
+npx ts-node examples/express-server.ts
+```
+
+### 3. Run the Agent Client
+
+In another terminal:
+
+```bash
+npx ts-node examples/agent-client.ts
+```
+
+The demo will perform a full loop: `402 Handshake -> On-chain Payment -> 200 Verification`.
 
 ---
 
@@ -53,4 +80,5 @@ To publish a new version of the SDK:
    ```
 
 ---
-*Built for the Autonomous AI Economy by PayNodeLabs.*
+
+_Built for the Autonomous AI Economy by PayNodeLabs._
