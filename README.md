@@ -21,35 +21,36 @@ npm install @paynodelabs/sdk-js ethers
 ### Agent Client (Payer)
 
 ```typescript
-import { PayNodeClient } from '@paynodelabs/sdk-js';
+import { PayNodeAgentClient } from '@paynodelabs/sdk-js';
 
-const client = new PayNodeClient('YOUR_AGENT_PRIVATE_KEY');
+const client = new PayNodeAgentClient('YOUR_AGENT_PRIVATE_KEY', 'https://mainnet.base.org');
 
 async function main() {
     // Automatically handles 402 challenges, pays USDC, and retries the request
-    const response = await client.request('https://api.merchant.com/premium-data');
+    const response = await client.requestGate('https://api.merchant.com/premium-data');
     console.log(await response.text());
 }
 main();
 ```
 
-### Merchant Middleware (Receiver)
+---
 
-```typescript
-import express from 'express';
-import { createPayNodeMiddleware } from '@paynodelabs/sdk-js';
+## 📦 Publishing to NPM
 
-const app = express();
+To publish a new version of the SDK:
 
-const requirePayment = createPayNodeMiddleware({
-    price: "1.50", // 1.50 USDC
-    merchantWallet: "0xYourWalletAddress..."
-});
-
-app.get('/premium-data', requirePayment, (req, res) => {
-    res.json({ secret: "This is paid M2M data." });
-});
-```
+1. **Build the project**:
+   ```bash
+   npm run build
+   ```
+2. **Login to NPM** (if not already):
+   ```bash
+   npm login
+   ```
+3. **Publish**:
+   ```bash
+   npm publish --access public
+   ```
 
 ---
 *Built for the Autonomous AI Economy by PayNodeLabs.*
