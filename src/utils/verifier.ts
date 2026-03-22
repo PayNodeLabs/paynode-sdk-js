@@ -11,13 +11,15 @@ export const ACCEPTED_TOKENS: Record<string, string[]> = {
   // Base Mainnet (chainId: 8453)
   '8453': [
     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
-    '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', // USDT
   ],
   // Base Sepolia (chainId: 84532)
   '84532': [
     '0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798', // USDC (Sandbox)
   ],
 };
+
+/** Minimum allowed payment amount to prevent dust exploits (1000 = 0.001 USDC) */
+export const MIN_PAYMENT_AMOUNT = 1000n;
 
 export interface PayNodeVerifierConfig {
   rpcUrls: string | string[];
@@ -84,7 +86,13 @@ export class PayNodeVerifier {
 
   async verifyPayment(txHash: string, expected: ExpectedPayment): Promise<{ isValid: boolean; error?: { code: ErrorCode; message: string } }> {
     try {
-      // 0. Token Whitelist Check (Anti-FakeToken)
+      // 0. Dust Exploit Check (Minimum Payment)
+      const expectedAmount = BigInt(expected.amount);
+      if (expectedAmount < MIN_PAYMENT_AMOUNT) {
+        return { isValid: false, error: { code: ErrorCode.AMOUNT_TOO_LOW, message: `Payment amount ${expected.amount} is below the minimum threshold of ${MIN_PAYMENT_AMOUNT}.` } };
+      }
+
+      // 1. Token Whitelist Check (Anti-FakeToken)
       if (this.acceptedTokens && !this.acceptedTokens.has(expected.tokenAddress.toLowerCase())) {
         return { isValid: false, error: { code: ErrorCode.TOKEN_NOT_ACCEPTED, message: `Token ${expected.tokenAddress} is not in the accepted whitelist.` } };
       }
