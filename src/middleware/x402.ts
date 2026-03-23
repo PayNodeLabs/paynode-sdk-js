@@ -22,7 +22,7 @@ export interface PayNodeMiddlewareOptions {
   generateOrderId?: (req: Request | any) => string;
 }
 
-export const x402_gate = (options: PayNodeMiddlewareOptions) => {
+export const x402Gate = (options: PayNodeMiddlewareOptions) => {
   const rpcUrls = options.rpcUrls || BASE_RPC_URLS;
   const chainId = options.chainId || 8453;
   const contractAddress = options.contractAddress || PAYNODE_ROUTER_ADDRESS;
@@ -103,3 +103,6 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
     }
   };
 };
+
+/** @deprecated Use x402Gate instead. */
+export const x402_gate = x402Gate;

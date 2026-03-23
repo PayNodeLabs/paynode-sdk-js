@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-    x402_gate,
+    x402Gate,
     PAYNODE_ROUTER_ADDRESS_SANDBOX,
     BASE_USDC_ADDRESS_SANDBOX
 } from '../src'; // Assuming exports are at root src
@@ -15,10 +15,10 @@ const port = process.env.PORT || 3000;
  * 🚀 PayNode Express Server Example (Base Sepolia)
  * 
  * Minimal configuration using defaults for Base Mainnet:
- * x402_gate({ merchantAddress: '0x...', price: '1.00' })
+ * x402Gate({ merchantAddress: '0x...', price: '1.00' })
  */
 
-const paynodeMiddleware = x402_gate({
+const paynodeMiddleware = x402Gate({
     merchantAddress: process.env.MERCHANT_ADDRESS || "0xYourMerchantWalletAddress",
     price: "0.10",
     // Overriding defaults for Sandbox (Sepolia)
