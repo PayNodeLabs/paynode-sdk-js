@@ -46,7 +46,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
   const defaultOrderIdGen = (req: any) => `agent_js_${Date.now()}`;
 
-  return async (req: any, res: any, next: NextFunction) => {
+  return async (req: Request | any, res: Response | any, next: NextFunction) => {
     // ... rest of the logic
     const getHeader = (name: string): string | null => {
         if (req.header && typeof req.header === 'function') return req.header(name);

@@ -1,6 +1,6 @@
 import { ethers, JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { ErrorCode, PayNodeException } from '../errors';
-import { IdempotencyStore } from './idempotency';
+import { IdempotencyStore, MemoryIdempotencyStore } from './idempotency';
 import { ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT } from '../constants';
 
 export interface PayNodeVerifierConfig {
@@ -54,7 +54,7 @@ export class PayNodeVerifier {
 
     this.contractAddress = config.contractAddress;
     this.chainId = config.chainId;
-    this.store = config.store;
+    this.store = config.store || new MemoryIdempotencyStore();
 
     let tokenList: string[] | undefined;
     if (config.acceptedTokens !== undefined) {

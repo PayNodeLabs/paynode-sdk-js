@@ -30,7 +30,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export class PayNodeException extends Error {
-  constructor(public code: ErrorCode, public message?: string, public details?: any) {
+  constructor(public code: ErrorCode, message?: string, public details?: any) {
     const finalMessage = message || ERROR_MESSAGES[code] || "An unexpected error occurred.";
     super(finalMessage);
     this.name = "PayNodeException";
