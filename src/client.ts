@@ -70,10 +70,19 @@ export class PayNodeAgentClient {
     const amountStr = headers.get('x-paynode-amount');
     const tokenAddr = headers.get('x-paynode-token-address');
     const orderIdStr = headers.get('x-paynode-order-id');
+    const chainIdStr = headers.get('x-paynode-chain-id');
     const currency = headers.get('x-paynode-currency') || 'USDC';
 
     if (!contractAddr || !merchantAddr || !amountStr || !tokenAddr || !orderIdStr) {
       throw new PayNodeException("Malformed 402 headers: missing metadata", ErrorCode.InternalError);
+    }
+
+    // Network safety check (v1.4)
+    if (chainIdStr) {
+      const network = await this.provider.getNetwork();
+      if (BigInt(chainIdStr) !== network.chainId) {
+        throw new PayNodeException(`Network mismatch: Current ${network.chainId}, Request ${chainIdStr}.`, ErrorCode.InvalidReceipt);
+      }
     }
 
     console.log(`💡 [PayNode-JS] Payment request: ${amountStr} ${currency} to ${merchantAddr}`);
