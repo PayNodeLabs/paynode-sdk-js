@@ -60,7 +60,7 @@ export class PayNodeAgentClient {
       return response;
     } catch (error) {
       if (error instanceof PayNodeException) throw error;
-      throw new PayNodeException(`Failed to connect to any provided RPC nodes.`, ErrorCode.RpcError, error);
+      throw new PayNodeException(ErrorCode.RpcError, undefined, error);
     }
   }
 
@@ -74,14 +74,14 @@ export class PayNodeAgentClient {
     const currency = headers.get('x-paynode-currency') || 'USDC';
 
     if (!contractAddr || !merchantAddr || !amountStr || !tokenAddr || !orderIdStr) {
-      throw new PayNodeException("Malformed 402 headers: missing metadata", ErrorCode.InternalError);
+      throw new PayNodeException(ErrorCode.InternalError, "Malformed 402 headers: missing metadata");
     }
 
     // Network safety check (v1.4)
     if (chainIdStr) {
       const network = await this.provider.getNetwork();
       if (BigInt(chainIdStr) !== network.chainId) {
-        throw new PayNodeException(`Network mismatch: Current ${network.chainId}, Request ${chainIdStr}.`, ErrorCode.InvalidReceipt);
+        throw new PayNodeException(ErrorCode.InvalidReceipt, `Network mismatch: Current ${network.chainId}, Request ${chainIdStr}.`);
       }
     }
 
@@ -90,7 +90,7 @@ export class PayNodeAgentClient {
     
     // v1.3 Constraint: Min payment protection
     if (amount < 1000n) {
-      throw new PayNodeException("Payment amount is below the protocol minimum (1000).", ErrorCode.AmountTooLow);
+      throw new PayNodeException(ErrorCode.AmountTooLow);
     }
 
     let txHash: string;
@@ -102,7 +102,7 @@ export class PayNodeAgentClient {
       ]);
 
       if (balance < amount) {
-        throw new PayNodeException("Wallet lacks USDC or ETH for gas.", ErrorCode.InsufficientFunds);
+        throw new PayNodeException(ErrorCode.InsufficientFunds);
       }
 
       // Protocol v1.3: Permit-First Execution
@@ -114,7 +114,7 @@ export class PayNodeAgentClient {
       }
     } catch (error) {
       if (error instanceof PayNodeException) throw error;
-      throw new PayNodeException(`On-chain transaction reverted or failed.`, ErrorCode.TransactionFailed, error);
+      throw new PayNodeException(ErrorCode.TransactionFailed, undefined, error);
     }
 
     console.log(`✅ [PayNode-JS] Payment confirmed on-chain: ${txHash}`);
