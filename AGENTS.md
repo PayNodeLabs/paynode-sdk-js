@@ -24,7 +24,7 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 - **Gas Hardening:** The SDK implements infinite approval and gas boosting internally to ensure Mainnet reliability.
 
 ### For Merchant Code (Server-Side)
-- **Middleware:** `x402_gate(config)`.
+- **Middleware:** `x402Gate(config)`.
 - **Handshake Headers:**
   - `x-paynode-contract`: Router address
   - `x-paynode-merchant`: Receiver wallet

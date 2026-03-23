@@ -1,25 +1,7 @@
+import { ethers, JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { ErrorCode, PayNodeException } from '../errors';
-import { JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
-import { IdempotencyStore } from './idempotency';
-
-/**
- * Default accepted token addresses across supported chains.
- * SDK will reject any payment involving a token NOT in this whitelist,
- * preventing fake-token attacks at the verification layer.
- */
-export const ACCEPTED_TOKENS: Record<string, string[]> = {
-  // Base Mainnet (chainId: 8453)
-  '8453': [
-    '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
-  ],
-  // Base Sepolia (chainId: 84532)
-  '84532': [
-    '0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798', // USDC (Sandbox)
-  ],
-};
-
-/** Minimum allowed payment amount to prevent dust exploits (1000 = 0.001 USDC) */
-export const MIN_PAYMENT_AMOUNT = 1000n;
+import { IdempotencyStore, MemoryIdempotencyStore } from './idempotency';
+import { ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT } from '../constants';
 
 export interface PayNodeVerifierConfig {
   rpcUrls: string | string[];
@@ -52,9 +34,9 @@ export class PayNodeVerifier {
 
   constructor(config: PayNodeVerifierConfig) {
     if (!config.rpcUrls || (Array.isArray(config.rpcUrls) && config.rpcUrls.length === 0)) {
-      throw new PayNodeException("Failed to connect to any provided RPC nodes.", ErrorCode.RpcError);
+      throw new PayNodeException(ErrorCode.RpcError);
     }
-    
+
     // Support RpcPool / FallbackProvider
     if (Array.isArray(config.rpcUrls)) {
       const providers = config.rpcUrls.map((url, i) => {
@@ -69,16 +51,16 @@ export class PayNodeVerifier {
     } else {
       this.provider = new JsonRpcProvider(config.rpcUrls, config.chainId);
     }
-    
+
     this.contractAddress = config.contractAddress;
     this.chainId = config.chainId;
-    this.store = config.store;
+    this.store = config.store || new MemoryIdempotencyStore();
 
     let tokenList: string[] | undefined;
     if (config.acceptedTokens !== undefined) {
       tokenList = config.acceptedTokens;
     } else if (config.chainId) {
-      tokenList = ACCEPTED_TOKENS[config.chainId.toString()];
+      tokenList = ACCEPTED_TOKENS[config.chainId];
     }
     if (tokenList && tokenList.length > 0) {
       this.acceptedTokens = new Set(tokenList.map(t => t.toLowerCase()));
@@ -90,29 +72,23 @@ export class PayNodeVerifier {
       // 0. Dust Exploit Check (Minimum Payment)
       const expectedAmount = BigInt(expected.amount);
       if (expectedAmount < MIN_PAYMENT_AMOUNT) {
-        return { isValid: false, error: new PayNodeException("Payment amount is below the protocol minimum (1000).", ErrorCode.AmountTooLow) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.AmountTooLow) };
       }
 
       // 1. Token Whitelist Check (Anti-FakeToken)
       if (this.acceptedTokens && !this.acceptedTokens.has(expected.tokenAddress.toLowerCase())) {
-        return { isValid: false, error: new PayNodeException("The provided token address is not in the whitelist.", ErrorCode.TokenNotAccepted) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted) };
       }
 
-      // 1. Idempotency Check
-      if (this.store) {
-        const isNew = await this.store.checkAndSet(txHash, 86400);
-        if (!isNew) {
-          return { isValid: false, error: new PayNodeException("This transaction hash has already been consumed.", ErrorCode.DuplicateTransaction) };
-        }
-      }
+
 
       // 2. Fetch Receipt
       const receipt = await this.provider.getTransactionReceipt(txHash);
       if (!receipt) {
-        return { isValid: false, error: new PayNodeException("The provided receipt (TxHash) is malformed or invalid.", ErrorCode.InvalidReceipt) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt) };
       }
       if (receipt.status !== 1) {
-        return { isValid: false, error: new PayNodeException("On-chain transaction reverted or failed.", ErrorCode.TransactionFailed) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.TransactionFailed) };
       }
 
       // 3. Parse Logs & Verify Contract Source
@@ -135,36 +111,51 @@ export class PayNodeVerifier {
       }
 
       if (!paymentLog) {
-        return { isValid: false, error: new PayNodeException("No valid PaymentReceived event from official contract found in transaction.", ErrorCode.WrongContract) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.WrongContract) };
       }
 
       const args = paymentLog.parsed.args;
 
-      // 4. Verify Merchant
+      // 4. Verify OrderId (bytes32 keccak256 hash comparison)
+      if (expected.orderId) {
+        if (args.orderId !== ethers.id(expected.orderId)) {
+          return { isValid: false, error: new PayNodeException(ErrorCode.OrderMismatch) };
+        }
+      }
+
+      // 5. Verify Merchant
       if (args.merchant.toLowerCase() !== expected.merchantAddress.toLowerCase()) {
-        return { isValid: false, error: new PayNodeException("Payment went to a different merchant.", ErrorCode.InvalidReceipt) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Payment went to a different merchant.") };
       }
 
       // 5. Verify Token
       if (args.token.toLowerCase() !== expected.tokenAddress.toLowerCase()) {
-        return { isValid: false, error: new PayNodeException("Payment used unexpected token.", ErrorCode.InvalidReceipt) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Payment used unexpected token.") };
       }
 
       // 6. Verify Amount
       if (BigInt(args.amount) < BigInt(expected.amount)) {
-        return { isValid: false, error: new PayNodeException("Payment amount is below required price.", ErrorCode.InvalidReceipt) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Payment amount is below required price.") };
       }
 
       // 7. Verify ChainId (Cross-chain replay protection)
       const expectedChainId = BigInt(this.chainId || (await this.provider.getNetwork()).chainId);
       if (BigInt(args.chainId) !== expectedChainId) {
-        return { isValid: false, error: new PayNodeException("ChainId mismatch. Invalid network.", ErrorCode.InvalidReceipt) };
+        return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "ChainId mismatch. Invalid network.") };
+      }
+
+      // 8. Idempotency Check
+      if (this.store) {
+        const isNew = await this.store.checkAndSet(txHash, 86400);
+        if (!isNew) {
+          return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction) };
+        }
       }
 
       return { isValid: true };
     } catch (e: any) {
       if (e instanceof PayNodeException) return { isValid: false, error: e };
-      return { isValid: false, error: new PayNodeException(`An unexpected error occurred: ${e.message}`, ErrorCode.InternalError) };
+      return { isValid: false, error: new PayNodeException(ErrorCode.InternalError, `An unexpected error occurred: ${e.message}`) };
     }
   }
 }

@@ -3,39 +3,51 @@ import { ErrorCode } from '../errors';
 import { PayNodeVerifier, PayNodeVerifierConfig } from '../utils/verifier';
 import { IdempotencyStore } from '../utils/idempotency';
 import { parseUnits } from 'ethers';
+import { 
+  BASE_RPC_URLS, 
+  PAYNODE_ROUTER_ADDRESS, 
+  BASE_USDC_ADDRESS 
+} from '../constants';
 
 export interface PayNodeMiddlewareOptions {
-  rpcUrls: string | string[];
-  chainId: number;
-  contractAddress: string;
   merchantAddress: string;
-  tokenAddress: string;
-  currency: string;
   price: string;
-  decimals: number;
+  rpcUrls?: string | string[];
+  chainId?: number;
+  contractAddress?: string;
+  tokenAddress?: string;
+  currency?: string;
+  decimals?: number;
   store?: IdempotencyStore;
   generateOrderId?: (req: Request | any) => string;
 }
 
-export const x402_gate = (options: PayNodeMiddlewareOptions) => {
+export const x402Gate = (options: PayNodeMiddlewareOptions) => {
+  const rpcUrls = options.rpcUrls || BASE_RPC_URLS;
+  const chainId = options.chainId || 8453;
+  const contractAddress = options.contractAddress || PAYNODE_ROUTER_ADDRESS;
+  const tokenAddress = options.tokenAddress || BASE_USDC_ADDRESS;
+  const currency = options.currency || 'USDC';
+  const decimals = options.decimals !== undefined ? options.decimals : 6;
+
   const verifier = new PayNodeVerifier({ 
-    rpcUrls: options.rpcUrls, 
-    chainId: options.chainId,
-    contractAddress: options.contractAddress,
+    rpcUrls, 
+    chainId,
+    contractAddress,
     store: options.store
   });
 
   let rawAmount: bigint;
   try {
-      rawAmount = parseUnits(options.price, options.decimals);
+      rawAmount = parseUnits(options.price, decimals);
   } catch (e) {
-      rawAmount = BigInt(Math.floor(parseFloat(options.price) * (10 ** options.decimals)));
+      rawAmount = BigInt(Math.floor(parseFloat(options.price) * (10 ** decimals)));
   }
 
   const defaultOrderIdGen = (req: any) => `agent_js_${Date.now()}`;
 
-  return async (req: any, res: any, next: NextFunction) => {
-    // Compatibility with different mock/real environments
+  return async (req: Request | any, res: Response | any, next: NextFunction) => {
+    // ... rest of the logic
     const getHeader = (name: string): string | null => {
         if (req.header && typeof req.header === 'function') return req.header(name);
         if (req.headers) return req.headers[name.toLowerCase()] || req.headers[name];
@@ -52,12 +64,12 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
     if (!receiptHash) {
       if (res.set) {
         res.set({
-          'x-paynode-contract': options.contractAddress,
+          'x-paynode-contract': contractAddress,
           'x-paynode-merchant': options.merchantAddress,
           'x-paynode-amount': rawAmount.toString(),
-          'x-paynode-currency': options.currency,
-          'x-paynode-token-address': options.tokenAddress,
-          'x-paynode-chain-id': options.chainId.toString(),
+          'x-paynode-currency': currency,
+          'x-paynode-token-address': tokenAddress,
+          'x-paynode-chain-id': chainId.toString(),
           'x-paynode-order-id': orderId
         });
       }
@@ -66,14 +78,14 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
         code: ErrorCode.MissingReceipt,
         message: "Please pay to PayNode contract and provide 'x-paynode-receipt' header.",
         amount: options.price,
-        currency: options.currency
+        currency: currency
       });
     }
     
     // Phase 2: On-chain Verification
     const result = await verifier.verifyPayment(receiptHash, {
       merchantAddress: options.merchantAddress,
-      tokenAddress: options.tokenAddress,
+      tokenAddress: tokenAddress,
       amount: rawAmount,
       orderId: orderId
     });
@@ -91,3 +103,6 @@ export const x402_gate = (options: PayNodeMiddlewareOptions) => {
     }
   };
 };
+
+/** @deprecated Use x402Gate instead. */
+export const x402_gate = x402Gate;
