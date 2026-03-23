@@ -80,13 +80,7 @@ export class PayNodeVerifier {
         return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted) };
       }
 
-      // 1. Idempotency Check
-      if (this.store) {
-        const isNew = await this.store.checkAndSet(txHash, 86400);
-        if (!isNew) {
-          return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction) };
-        }
-      }
+
 
       // 2. Fetch Receipt
       const receipt = await this.provider.getTransactionReceipt(txHash);
@@ -148,6 +142,14 @@ export class PayNodeVerifier {
       const expectedChainId = BigInt(this.chainId || (await this.provider.getNetwork()).chainId);
       if (BigInt(args.chainId) !== expectedChainId) {
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "ChainId mismatch. Invalid network.") };
+      }
+
+      // 8. Idempotency Check
+      if (this.store) {
+        const isNew = await this.store.checkAndSet(txHash, 86400);
+        if (!isNew) {
+          return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction) };
+        }
       }
 
       return { isValid: true };
