@@ -1,25 +1,7 @@
 import { ErrorCode, PayNodeException } from '../errors';
 import { JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { IdempotencyStore } from './idempotency';
-
-/**
- * Default accepted token addresses across supported chains.
- * SDK will reject any payment involving a token NOT in this whitelist,
- * preventing fake-token attacks at the verification layer.
- */
-export const ACCEPTED_TOKENS: Record<string, string[]> = {
-  // Base Mainnet (chainId: 8453)
-  '8453': [
-    '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
-  ],
-  // Base Sepolia (chainId: 84532)
-  '84532': [
-    '0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798', // USDC (Sandbox)
-  ],
-};
-
-/** Minimum allowed payment amount to prevent dust exploits (1000 = 0.001 USDC) */
-export const MIN_PAYMENT_AMOUNT = 1000n;
+import { ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT } from '../constants';
 
 export interface PayNodeVerifierConfig {
   rpcUrls: string | string[];
@@ -54,7 +36,7 @@ export class PayNodeVerifier {
     if (!config.rpcUrls || (Array.isArray(config.rpcUrls) && config.rpcUrls.length === 0)) {
       throw new PayNodeException("Failed to connect to any provided RPC nodes.", ErrorCode.RpcError);
     }
-    
+
     // Support RpcPool / FallbackProvider
     if (Array.isArray(config.rpcUrls)) {
       const providers = config.rpcUrls.map((url, i) => {
@@ -69,7 +51,7 @@ export class PayNodeVerifier {
     } else {
       this.provider = new JsonRpcProvider(config.rpcUrls, config.chainId);
     }
-    
+
     this.contractAddress = config.contractAddress;
     this.chainId = config.chainId;
     this.store = config.store;
@@ -78,7 +60,7 @@ export class PayNodeVerifier {
     if (config.acceptedTokens !== undefined) {
       tokenList = config.acceptedTokens;
     } else if (config.chainId) {
-      tokenList = ACCEPTED_TOKENS[config.chainId.toString()];
+      tokenList = ACCEPTED_TOKENS[config.chainId];
     }
     if (tokenList && tokenList.length > 0) {
       this.acceptedTokens = new Set(tokenList.map(t => t.toLowerCase()));

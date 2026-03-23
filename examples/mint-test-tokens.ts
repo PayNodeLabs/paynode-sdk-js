@@ -1,13 +1,14 @@
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
-import * as path from "path";
+import { BASE_USDC_ADDRESS_SANDBOX, BASE_RPC_URLS_SANDBOX } from "../src/constants";
 
 // Load .env from the examples directory or root
 dotenv.config();
 
-const RPC_URL = process.env.RPC_URL || "https://sepolia.base.org";
+// Configuration
+const RPC_URL = BASE_RPC_URLS_SANDBOX[0];
 const PRIVATE_KEY = process.env.CLIENT_PRIVATE_KEY;
-const MOCK_USDC_ADDR = "0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798";
+const MOCK_USDC_ADDR = BASE_USDC_ADDRESS_SANDBOX;
 
 if (!PRIVATE_KEY) {
   console.error("❌ Error: CLIENT_PRIVATE_KEY not found in .env");

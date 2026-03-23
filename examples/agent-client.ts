@@ -1,4 +1,5 @@
 import { PayNodeAgentClient } from '../src/client';
+import { BASE_RPC_URLS_SANDBOX } from '../src/constants';
 import * as dotenv from 'dotenv';
 
 // Load .env
@@ -14,7 +15,7 @@ dotenv.config();
  */
 
 async function runJsAgent() {
-    const TESTNET_RPC = process.env.PAYNODE_RPC_URL || "https://sepolia.base.org";
+    const TESTNET_RPC = BASE_RPC_URLS_SANDBOX[0];
     const PRIVATE_KEY = process.env.CLIENT_PRIVATE_KEY || "0xYourPrivateKeyHere"; // Replace with your testnet PK
     const TARGET_URL = process.env.TARGET_MERCHANT_URL || "http://localhost:3000/api/premium-data";
 

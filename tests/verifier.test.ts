@@ -1,5 +1,6 @@
-import { PayNodeVerifier, MIN_PAYMENT_AMOUNT } from '../src/utils/verifier';
+import { PayNodeVerifier } from '../src/utils/verifier';
 import { ErrorCode, PayNodeException } from '../src/errors';
+import { MIN_PAYMENT_AMOUNT } from '../src/constants';
 import { JsonRpcProvider } from 'ethers';
 
 // Mock Ethers Provider for CI/CD
@@ -19,12 +20,14 @@ describe('PayNode Verifier Unit Tests', () => {
   const mockRpc = "http://localhost:8545";
   const mockMerchant = "0x" + "1".repeat(40);
   const mockToken = "0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798"; // USDC Sepolia
+  const mockContractAddress = "0xB587Bc36aaCf65962eCd6Ba59e2DA76f2f575408";
   const validChainId = 84532;
 
   beforeEach(() => {
     verifier = new PayNodeVerifier({
       rpcUrls: mockRpc,
       chainId: validChainId,
+      contractAddress: mockContractAddress,
     });
     jest.clearAllMocks();
   });
@@ -38,7 +41,7 @@ describe('PayNode Verifier Unit Tests', () => {
 
     const result = await verifier.verifyPayment("0xTxHash", expected);
     expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.AMOUNT_TOO_LOW);
+    expect(result.error?.code).toBe(ErrorCode.AmountTooLow);
   });
 
   test('✅ Should reject non-whitelisted tokens', async () => {
@@ -50,7 +53,7 @@ describe('PayNode Verifier Unit Tests', () => {
 
     const result = await verifier.verifyPayment("0xTxHash", expected);
     expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.TOKEN_NOT_ACCEPTED);
+    expect(result.error?.code).toBe(ErrorCode.TokenNotAccepted);
   });
 
   test('✅ Should reject duplicate/already consumed transaction hashes', async () => {
@@ -61,6 +64,7 @@ describe('PayNode Verifier Unit Tests', () => {
     const verifierWithStore = new PayNodeVerifier({
       rpcUrls: mockRpc,
       chainId: validChainId,
+      contractAddress: mockContractAddress,
       store: mockStore as any,
     });
 
@@ -72,7 +76,7 @@ describe('PayNode Verifier Unit Tests', () => {
 
     const result = await verifierWithStore.verifyPayment("0xDuplicateHash", expected);
     expect(result.isValid).toBe(false);
-    expect(result.error?.code).toBe(ErrorCode.DUPLICATE_TRANSACTION);
+    expect(result.error?.code).toBe(ErrorCode.DuplicateTransaction);
   });
 
   test('✅ Should correctly verify a valid PaymentReceived event', async () => {
@@ -102,7 +106,7 @@ describe('PayNode Verifier Unit Tests', () => {
         status: 1,
         logs: [
             {
-                address: "0xContractAddress",
+                address: mockContractAddress,
                 topics: log.topics,
                 data: log.data
             }
@@ -112,6 +116,7 @@ describe('PayNode Verifier Unit Tests', () => {
     const verifierForTest = new PayNodeVerifier({
       rpcUrls: mockRpc,
       chainId: validChainId,
+      contractAddress: mockContractAddress,
     });
 
     const providerInstance = (JsonRpcProvider as any).mock.results[0].value;

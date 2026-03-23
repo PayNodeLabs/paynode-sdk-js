@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { PayNodeException, ErrorCode } from './errors';
+import { BASE_RPC_URLS } from './constants';
 
 export interface RequestOptions extends RequestInit {
   json?: any;
@@ -23,7 +24,7 @@ export class PayNodeAgentClient {
     "function payWithPermit(address payer, address token, address merchant, uint256 amount, bytes32 orderId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public"
   ];
 
-  constructor(privateKey: string, rpcUrls: string | string[]) {
+  constructor(privateKey: string, rpcUrls: string | string[] = BASE_RPC_URLS) {
     this.rpcUrls = Array.isArray(rpcUrls) ? rpcUrls : [rpcUrls];
     
     const configs = this.rpcUrls.map((url, index) => ({
@@ -69,11 +70,13 @@ export class PayNodeAgentClient {
     const amountStr = headers.get('x-paynode-amount');
     const tokenAddr = headers.get('x-paynode-token-address');
     const orderIdStr = headers.get('x-paynode-order-id');
+    const currency = headers.get('x-paynode-currency') || 'USDC';
 
     if (!contractAddr || !merchantAddr || !amountStr || !tokenAddr || !orderIdStr) {
       throw new PayNodeException("Malformed 402 headers: missing metadata", ErrorCode.InternalError);
     }
 
+    console.log(`💡 [PayNode-JS] Payment request: ${amountStr} ${currency} to ${merchantAddr}`);
     const amount = BigInt(amountStr);
     
     // v1.3 Constraint: Min payment protection
@@ -95,10 +98,10 @@ export class PayNodeAgentClient {
 
       // Protocol v1.3: Permit-First Execution
       if (allowance >= amount) {
-        txHash = await this.executeStandardPay(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
+        txHash = await this.pay(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
       } else {
         console.log(`⚡ [PayNode-JS] Insufficient allowance. Attempting Permit-First payment...`);
-        txHash = await this.executePermitPay(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
+        txHash = await this.payWithPermit(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
       }
     } catch (error) {
       if (error instanceof PayNodeException) throw error;
@@ -119,7 +122,7 @@ export class PayNodeAgentClient {
     return await fetch(url, retryOptions);
   }
 
-  private async executeStandardPay(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
+  async pay(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
     const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
     const orderIdBytes = ethers.id(orderId);
     
@@ -134,7 +137,7 @@ export class PayNodeAgentClient {
     return receipt.hash;
   }
 
-  private async executePermitPay(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
+  async payWithPermit(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
     const sig = await this.signPermit(tokenAddr, contractAddr, amount);
     const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
     const orderIdBytes = ethers.id(orderId);
