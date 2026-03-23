@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PayNodeException, ErrorCode } from './errors';
-import { BASE_RPC_URLS } from './constants';
+import { BASE_RPC_URLS, ACCEPTED_TOKENS } from './constants';
 
 export interface RequestOptions extends RequestInit {
   json?: any;
@@ -91,6 +91,13 @@ export class PayNodeAgentClient {
     // v1.3 Constraint: Min payment protection
     if (amount < 1000n) {
       throw new PayNodeException(ErrorCode.AmountTooLow);
+    }
+
+    // v1.4 Constraint: Token whitelist pre-flight (Anti-FakeToken)
+    const resolvedChainId = chainIdStr ? Number(chainIdStr) : 8453;
+    const whitelist = ACCEPTED_TOKENS[resolvedChainId];
+    if (whitelist && whitelist.length > 0 && !whitelist.some(t => t.toLowerCase() === tokenAddr!.toLowerCase())) {
+      throw new PayNodeException(ErrorCode.TokenNotAccepted);
     }
 
     let txHash: string;

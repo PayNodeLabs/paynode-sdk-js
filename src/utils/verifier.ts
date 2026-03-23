@@ -122,10 +122,8 @@ export class PayNodeVerifier {
 
       const args = paymentLog.parsed.args;
 
-      // 4. Verify OrderId
+      // 4. Verify OrderId (bytes32 keccak256 hash comparison)
       if (expected.orderId) {
-        const expectedOrderIdBytes = iface.parseLog({ topics: paymentLog.parsed.topics, data: paymentLog.parsed.data })?.args.orderId;
-        // In ethers v6, we can compare the bytes32 strings directly
         if (args.orderId !== ethers.id(expected.orderId)) {
           return { isValid: false, error: new PayNodeException(ErrorCode.OrderMismatch) };
         }
