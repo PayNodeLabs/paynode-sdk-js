@@ -1,5 +1,5 @@
+import { ethers, JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { ErrorCode, PayNodeException } from '../errors';
-import { JsonRpcProvider, FallbackProvider, Interface } from 'ethers';
 import { IdempotencyStore } from './idempotency';
 import { ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT } from '../constants';
 
@@ -122,7 +122,16 @@ export class PayNodeVerifier {
 
       const args = paymentLog.parsed.args;
 
-      // 4. Verify Merchant
+      // 4. Verify OrderId
+      if (expected.orderId) {
+        const expectedOrderIdBytes = iface.parseLog({ topics: paymentLog.parsed.topics, data: paymentLog.parsed.data })?.args.orderId;
+        // In ethers v6, we can compare the bytes32 strings directly
+        if (args.orderId !== ethers.id(expected.orderId)) {
+          return { isValid: false, error: new PayNodeException("OrderId in receipt does not match requested ID.", ErrorCode.OrderMismatch) };
+        }
+      }
+
+      // 5. Verify Merchant
       if (args.merchant.toLowerCase() !== expected.merchantAddress.toLowerCase()) {
         return { isValid: false, error: new PayNodeException("Payment went to a different merchant.", ErrorCode.InvalidReceipt) };
       }
