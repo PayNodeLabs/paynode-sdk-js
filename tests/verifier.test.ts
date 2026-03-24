@@ -19,7 +19,7 @@ describe('PayNode Verifier Unit Tests', () => {
   let verifier: PayNodeVerifier;
   const mockRpc = "http://localhost:8545";
   const mockMerchant = "0x" + "1".repeat(40);
-  const mockToken = "0xeAC1f2C7099CdaFfB91Aa3b8Ffd653Ef16935798"; // USDC Sepolia
+  const mockToken = "0x109AEddD656Ed2761d1e210E179329105039c784"; // USDC Sepolia
   const mockContractAddress = "0xB587Bc36aaCf65962eCd6Ba59e2DA76f2f575408";
   const validChainId = 84532;
 
@@ -60,7 +60,7 @@ describe('PayNode Verifier Unit Tests', () => {
     const mockStore = {
       checkAndSet: jest.fn().mockResolvedValue(false), // Duplicate
     };
-    
+
     const verifierWithStore = new PayNodeVerifier({
       rpcUrls: mockRpc,
       chainId: validChainId,
@@ -91,7 +91,7 @@ describe('PayNode Verifier Unit Tests', () => {
     const iface = new (require('ethers').Interface)([
       "event PaymentReceived(bytes32 indexed orderId, address indexed merchant, address indexed payer, address token, uint256 amount, uint256 fee, uint256 chainId)"
     ]);
-    
+
     const log = iface.encodeEventLog("PaymentReceived", [
       "0x0000000000000000000000000000000000000000000000000000000000000000", // orderId
       mockMerchant,
@@ -103,14 +103,14 @@ describe('PayNode Verifier Unit Tests', () => {
     ]);
 
     const mockReceipt = {
-        status: 1,
-        logs: [
-            {
-                address: mockContractAddress,
-                topics: log.topics,
-                data: log.data
-            }
-        ]
+      status: 1,
+      logs: [
+        {
+          address: mockContractAddress,
+          topics: log.topics,
+          data: log.data
+        }
+      ]
     };
     // Ensure provider instance is captured by recreating verifier in this test
     const verifierForTest = new PayNodeVerifier({
