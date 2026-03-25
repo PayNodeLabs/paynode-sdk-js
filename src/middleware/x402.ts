@@ -8,6 +8,12 @@ import {
   PAYNODE_ROUTER_ADDRESS, 
   BASE_USDC_ADDRESS 
 } from '../constants';
+import { 
+  PaymentRequiredResponse, 
+  PaymentPayload, 
+  ExactEVMPayload,
+  UnifiedPaymentPayload
+} from '../types/x402';
 
 export interface PayNodeMiddlewareOptions {
   merchantAddress: string;
@@ -20,6 +26,8 @@ export interface PayNodeMiddlewareOptions {
   decimals?: number;
   store?: IdempotencyStore;
   generateOrderId?: (req: Request | any) => string;
+  description?: string;
+  maxTimeoutSeconds?: number;
 }
 
 export const x402Gate = (options: PayNodeMiddlewareOptions) => {
@@ -54,53 +62,90 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
         return null;
     };
 
-    const receiptHash = getHeader('x-paynode-receipt') || getHeader('X-PayNode-TxHash');
-    let orderId = getHeader('x-paynode-order-id');
+    const v2PayloadHeader = getHeader('X-402-Payload');
+    let orderId = getHeader('X-402-Order-Id');
 
     if (!orderId) {
       orderId = (options.generateOrderId || defaultOrderIdGen)(req);
     }
 
-    if (!receiptHash) {
-      if (res.set) {
-        res.set({
-          'x-paynode-contract': contractAddress,
-          'x-paynode-merchant': options.merchantAddress,
-          'x-paynode-amount': rawAmount.toString(),
-          'x-paynode-currency': currency,
-          'x-paynode-token-address': tokenAddress,
-          'x-paynode-chain-id': chainId.toString(),
-          'x-paynode-order-id': orderId
+    // Handle x402 v2 Unified Payload
+    let unifiedPayload: UnifiedPaymentPayload | null = null;
+    if (v2PayloadHeader) {
+      try {
+        unifiedPayload = JSON.parse(Buffer.from(v2PayloadHeader, 'base64').toString());
+      } catch (e) {
+        console.error("❌ [PayNode-Middleware] Failed to decode X-402-Payload header:", e);
+      }
+    }
+
+    if (unifiedPayload) {
+      const result = await verifier.verify(
+        unifiedPayload,
+        {
+          merchantAddress: options.merchantAddress,
+          tokenAddress: tokenAddress,
+          amount: rawAmount.toString(),
+          orderId: orderId
+        },
+        unifiedPayload.type === 'eip3009' ? (unifiedPayload.payload as any)?.extra : {}
+      );
+
+      if (result.isValid) {
+        req.paynode = { unifiedPayload, orderId };
+        return next();
+      } else {
+        return res.status(403).json({
+          error: "Forbidden",
+          code: result.error?.code || ErrorCode.InvalidReceipt,
+          message: result.error?.message || "Invalid X402 payment payload"
         });
       }
-      return res.status(402).json({ 
-        error: "Payment Required",
-        code: ErrorCode.MissingReceipt,
-        message: "Please pay to PayNode contract and provide 'x-paynode-receipt' header.",
-        amount: options.price,
-        currency: currency
-      });
     }
-    
-    // Phase 2: On-chain Verification
-    const result = await verifier.verifyPayment(receiptHash, {
-      merchantAddress: options.merchantAddress,
-      tokenAddress: tokenAddress,
-      amount: rawAmount,
-      orderId: orderId
-    });
 
-    if (result.isValid) {
-      // Expose to downstream handlers
-      req.paynode = { receiptHash, orderId };
-      return next();
-    } else {
-      return res.status(403).json({ 
-        error: "Forbidden",
-        code: result.error?.code || ErrorCode.InvalidReceipt,
-        message: result.error?.message || "Invalid receipt"
-      });
+    // No valid payment found, return 402 with X-402-Required
+    const v2Response: PaymentRequiredResponse = {
+      x402Version: 2,
+      error: "Payment Required by PayNode",
+      resource: {
+        url: req.protocol + '://' + req.get('host') + req.originalUrl,
+        description: options.description || "Protected Resource",
+        mimeType: req.header('accept') || "application/json"
+      },
+      accepts: [
+        {
+          scheme: "exact",
+          type: "eip3009",
+          network: `eip155:${chainId}`,
+          amount: rawAmount.toString(),
+          asset: tokenAddress,
+          payTo: options.merchantAddress,
+          maxTimeoutSeconds: options.maxTimeoutSeconds || 3600,
+          extra: {
+            name: currency,
+            version: "2"
+          }
+        },
+        {
+          scheme: "exact",
+          type: "onchain",
+          network: `eip155:${chainId}`,
+          amount: rawAmount.toString(),
+          asset: tokenAddress,
+          payTo: options.merchantAddress,
+          maxTimeoutSeconds: options.maxTimeoutSeconds || 3600,
+          router: contractAddress
+        }
+      ]
+    };
+
+    const b64Required = Buffer.from(JSON.stringify(v2Response)).toString('base64');
+
+    if (res.set) {
+      res.set('X-402-Required', b64Required);
     }
+
+    return res.status(402).json(v2Response);
   };
 };
 

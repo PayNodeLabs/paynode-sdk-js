@@ -28,12 +28,16 @@ const paynodeMiddleware = x402Gate({
 });
 
 app.get('/api/premium-data', paynodeMiddleware, (req: any, res) => {
-    const { receiptHash, orderId } = req.paynode;
+    const { unifiedPayload, orderId } = req.paynode;
 
     res.json({
         status: "success",
         message: "This is premium content only accessible after payment.",
-        payment_info: { receipt: receiptHash, order_id: orderId }
+        payment_info: {
+            receipt: unifiedPayload.payload?.txHash || unifiedPayload.payload?.signature,
+            order_id: orderId,
+            payment_type: unifiedPayload.type
+        }
     });
 });
 
