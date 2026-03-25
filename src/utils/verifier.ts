@@ -63,7 +63,7 @@ export class PayNodeVerifier {
   }
 
   private static ROUTER_ABI = [
-    "event PaymentReceived(address indexed merchant, address indexed token, uint256 amount, bytes32 indexed orderId, uint256 chainId)"
+    "event PaymentReceived(bytes32 indexed orderId, address indexed merchant, address indexed payer, address token, uint256 amount, uint256 fee, uint256 chainId)"
   ];
 
   async verify(
