@@ -1,15 +1,24 @@
 import { ethers } from 'ethers';
 import { PayNodeException, ErrorCode } from './errors';
-import { BASE_RPC_URLS, ACCEPTED_TOKENS } from './constants';
+import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI } from './constants';
+import { 
+  PaymentRequiredResponse, 
+  ExactEVMPayload,
+  UnifiedPaymentPayload
+} from './types/x402';
 
 export interface RequestOptions extends RequestInit {
   json?: any;
 }
 
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
 export class PayNodeAgentClient {
   private wallet: ethers.Wallet;
   private provider: ethers.FallbackProvider;
   private rpcUrls: string[];
+  private maxRetries: number;
+  private nonceLock: Promise<void> = Promise.resolve();
 
   private ERC20_ABI = [
     "function approve(address spender, uint256 value) public returns (bool)",
@@ -19,13 +28,11 @@ export class PayNodeAgentClient {
     "function nonces(address owner) view returns (uint256)"
   ];
 
-  private ROUTER_ABI = [
-    "function pay(address token, address merchant, uint256 amount, bytes32 orderId) public",
-    "function payWithPermit(address payer, address token, address merchant, uint256 amount, bytes32 orderId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public"
-  ];
+  private ROUTER_ABI = PAYNODE_ROUTER_ABI;
 
-  constructor(privateKey: string, rpcUrls: string | string[] = BASE_RPC_URLS) {
+  constructor(privateKey: string, rpcUrls: string | string[] = BASE_RPC_URLS, maxRetries: number = 3) {
     this.rpcUrls = Array.isArray(rpcUrls) ? rpcUrls : [rpcUrls];
+    this.maxRetries = maxRetries;
     
     const configs = this.rpcUrls.map((url, index) => ({
       provider: new ethers.JsonRpcProvider(url),
@@ -36,6 +43,38 @@ export class PayNodeAgentClient {
 
     this.provider = new ethers.FallbackProvider(configs);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
+  }
+
+  private async _fetchWithRetry(url: string, options: RequestInit): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+
+        if (!response || !RETRYABLE_STATUS_CODES.has(response.status)) {
+          return response;
+        }
+
+        if (attempt < this.maxRetries - 1) {
+          const backoffMs = Math.pow(2, attempt) * 1000;
+          console.warn(`⚠️ [PayNode-JS] ${response.status} received. Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+
+        return response;
+      } catch (error: any) {
+        lastError = error;
+        if (attempt < this.maxRetries - 1) {
+          const backoffMs = Math.pow(2, attempt) * 1000;
+          console.warn(`⚠️ [PayNode-JS] Request failed: ${error.message}. Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+      }
+    }
+
+    throw lastError || new Error('Request failed after max retries');
   }
 
   async requestGate(url: string, options: RequestOptions = {}): Promise<Response> {
@@ -50,134 +89,254 @@ export class PayNodeAgentClient {
     }
 
     try {
-      let response = await fetch(url, fetchOptions);
+      let response = await this._fetchWithRetry(url, fetchOptions);
 
       if (response.status === 402) {
-        console.log(`💡 [PayNode-JS] 402 Payment Required detected. Handling autonomous payment...`);
-        return await this.handlePaymentAndRetry(url, fetchOptions, response.headers);
+        console.log(`💡 [PayNode-JS] 402 Payment Required detected. Analyzing protocol version...`);
+        
+        const contentType = response.headers.get('content-type');
+        const b64Required = response.headers.get('X-402-Required');
+        const orderId = response.headers.get('X-402-Order-Id');
+        
+        let body: any = null;
+        if (contentType && contentType.includes('application/json')) {
+          body = await response.clone().json();
+        } else if (b64Required) {
+          try {
+            const decoded = typeof globalThis.Buffer !== 'undefined'
+              ? globalThis.Buffer.from(b64Required, 'base64').toString()
+              : atob(b64Required);
+            body = JSON.parse(decoded);
+          } catch (e) {
+            console.debug('⚠️ [PayNode-JS] Failed to parse X-402-Required header:', e);
+          }
+        }
+
+        if (body && body.x402Version === 2) {
+            console.log(`🚀 [PayNode-JS] x402 v2 detected. Handling autonomous payment...`);
+            if (orderId) body.orderId = orderId;
+            return await this._handleX402V2(url, fetchOptions, body as PaymentRequiredResponse);
+        }
+
+        throw new PayNodeException(ErrorCode.InternalError, "Unsupported or malformed 402 response");
       }
 
       return response;
-    } catch (error) {
-      if (error instanceof PayNodeException) throw error;
+    } catch (error: any) {
+      if (error instanceof PayNodeException || error?.name === "PayNodeException") throw error;
+      console.error(`❌ [PayNode-JS] Critical error in requestGate:`, error);
       throw new PayNodeException(ErrorCode.RpcError, undefined, error);
     }
   }
 
-  private async handlePaymentAndRetry(url: string, options: RequestInit, headers: Headers): Promise<Response> {
-    const contractAddr = headers.get('x-paynode-contract');
-    const merchantAddr = headers.get('x-paynode-merchant');
-    const amountStr = headers.get('x-paynode-amount');
-    const tokenAddr = headers.get('x-paynode-token-address');
-    const orderIdStr = headers.get('x-paynode-order-id');
-    const chainIdStr = headers.get('x-paynode-chain-id');
-    const currency = headers.get('x-paynode-currency') || 'USDC';
+  private async _handleX402V2(url: string, options: RequestInit, requirements: PaymentRequiredResponse): Promise<Response> {
+    const network = await this.provider.getNetwork();
+    const chainId = Number(network.chainId);
+    const caip2ChainId = `eip155:${chainId}`;
 
-    if (!contractAddr || !merchantAddr || !amountStr || !tokenAddr || !orderIdStr) {
-      throw new PayNodeException(ErrorCode.InternalError, "Malformed 402 headers: missing metadata");
+    // Select suitable requirement
+    const requirement = requirements.accepts.find((req: any) => 
+      req.network === caip2ChainId
+    );
+
+    if (!requirement) {
+      throw new PayNodeException(ErrorCode.TransactionFailed, `No compatible payment requirement found for network ${caip2ChainId}`);
     }
 
-    // Network safety check (v1.4)
-    if (chainIdStr) {
-      const network = await this.provider.getNetwork();
-      if (BigInt(chainIdStr) !== network.chainId) {
-        throw new PayNodeException(ErrorCode.InvalidReceipt, `Network mismatch: Current ${network.chainId}, Request ${chainIdStr}.`);
+    // 🛡️ Token Whitelist Check (Case-insensitive)
+    const chainTokens = ACCEPTED_TOKENS[chainId]?.map(t => t.toLowerCase());
+    if (chainTokens && !chainTokens.includes(requirement.asset.toLowerCase())) {
+      throw new PayNodeException(ErrorCode.TokenNotAccepted, `Token ${requirement.asset} is not in the whitelist for chain ${chainId}`);
+    }
+
+    const orderId = requirement.orderId || requirements.orderId || url;
+
+    // Dust limit check
+    if (BigInt(requirement.amount) < BigInt(MIN_PAYMENT_AMOUNT)) {
+      throw new PayNodeException(ErrorCode.AmountTooLow, `Payment amount ${requirement.amount} is below the minimum dust limit`);
+    }
+
+    let payload: UnifiedPaymentPayload;
+
+    if (requirement.type === 'eip3009') {
+      const validAfter = Math.floor(Date.now() / 1000) - 60;
+      const validBefore = Math.floor(Date.now() / 1000) + (requirement.maxTimeoutSeconds || 3600);
+      const nonce = ethers.hexlify(ethers.randomBytes(32));
+
+      const authorization = await this.signTransferWithAuthorization(
+        requirement.asset,
+        requirement.payTo,
+        BigInt(requirement.amount),
+        validAfter,
+        validBefore,
+        nonce,
+        requirement.extra
+      );
+
+      payload = {
+        version: "3.1",
+        type: 'eip3009',
+        orderId,
+        payload: authorization
+      };
+    } else {
+      // type: 'onchain' or fallback
+      const routerAddr = requirement.router;
+      if (!routerAddr) {
+        throw new PayNodeException(ErrorCode.InternalError, "On-chain payment required but no router address provided.");
       }
-    }
 
-    console.log(`💡 [PayNode-JS] Payment request: ${amountStr} ${currency} to ${merchantAddr}`);
-    const amount = BigInt(amountStr);
-    
-    // v1.3 Constraint: Min payment protection
-    if (amount < 1000n) {
-      throw new PayNodeException(ErrorCode.AmountTooLow);
-    }
+      console.log(`⚡ [PayNode-JS] Executing on-chain payment to ${requirement.payTo}...`);
+      const amount = BigInt(requirement.amount);
+      const tokenContract = new ethers.Contract(requirement.asset, this.ERC20_ABI, this.wallet);
+      const allowance = await tokenContract.allowance(this.wallet.address, routerAddr);
 
-    // v1.4 Constraint: Token whitelist pre-flight (Anti-FakeToken)
-    const resolvedChainId = chainIdStr ? Number(chainIdStr) : 8453;
-    const whitelist = ACCEPTED_TOKENS[resolvedChainId];
-    if (whitelist && whitelist.length > 0 && !whitelist.some(t => t.toLowerCase() === tokenAddr!.toLowerCase())) {
-      throw new PayNodeException(ErrorCode.TokenNotAccepted);
-    }
-
-    let txHash: string;
-    try {
-      const tokenContract = new ethers.Contract(tokenAddr, this.ERC20_ABI, this.wallet);
-      const [balance, allowance] = await Promise.all([
-        tokenContract.balanceOf(this.wallet.address),
-        tokenContract.allowance(this.wallet.address, contractAddr)
-      ]);
-
-      if (balance < amount) {
-        throw new PayNodeException(ErrorCode.InsufficientFunds);
-      }
-
-      // Protocol v1.3: Permit-First Execution
+      let txHash: string;
       if (allowance >= amount) {
-        txHash = await this.pay(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
+        try {
+          txHash = await this.pay(routerAddr, requirement.asset, requirement.payTo, amount, orderId);
+        } catch (e) {
+          console.warn(`⚠️ [PayNode-JS] Direct pay failed (possibly allowance race), falling back to permit:`, e);
+          txHash = await this.payWithPermit(routerAddr, requirement.asset, requirement.payTo, amount, orderId, requirement.extra?.version || '2');
+        }
       } else {
-        console.log(`⚡ [PayNode-JS] Insufficient allowance. Attempting Permit-First payment...`);
-        txHash = await this.payWithPermit(contractAddr, tokenAddr, merchantAddr, amount, orderIdStr);
+        txHash = await this.payWithPermit(routerAddr, requirement.asset, requirement.payTo, amount, orderId, requirement.extra?.version || '2');
       }
-    } catch (error) {
-      if (error instanceof PayNodeException) throw error;
-      throw new PayNodeException(ErrorCode.TransactionFailed, undefined, error);
+
+      payload = {
+        version: "3.1",
+        type: 'onchain',
+        orderId,
+        payload: { txHash }
+      };
     }
 
-    console.log(`✅ [PayNode-JS] Payment confirmed on-chain: ${txHash}`);
-
+    const json = JSON.stringify(payload);
+    const b64Payload = typeof globalThis.Buffer !== 'undefined'
+      ? globalThis.Buffer.from(json).toString('base64')
+      : btoa(json);
     const retryOptions: RequestInit = {
       ...options,
       headers: {
         ...options.headers,
-        'x-paynode-receipt': txHash,
-        'x-paynode-order-id': orderIdStr
+        'Content-Type': 'application/json',
+        'X-402-Payload': b64Payload,
+        'X-402-Order-Id': orderId
       }
     };
 
-    return await fetch(url, retryOptions);
+    const retryResponse = await this._fetchWithRetry(url, retryOptions);
+    if (retryResponse.status === 402) {
+      throw new PayNodeException(ErrorCode.TransactionFailed, "Still 402 after payment attempt. The server may have rejected the payment or authorization.");
+    }
+    return retryResponse;
+  }
+
+  async signTransferWithAuthorization(
+    tokenAddr: string, 
+    to: string, 
+    amount: bigint, 
+    validAfter: number, 
+    validBefore: number, 
+    nonce: string,
+    extra: Record<string, any> = {}
+  ): Promise<ExactEVMPayload> {
+    const network = await this.provider.getNetwork();
+    
+    const domain = {
+      name: extra.name || "USD Coin",
+      version: extra.version || "2",
+      chainId: Number(network.chainId),
+      verifyingContract: tokenAddr
+    };
+
+    const types = {
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" }
+      ]
+    };
+
+    const value = {
+      from: this.wallet.address,
+      to,
+      value: amount,
+      validAfter,
+      validBefore,
+      nonce
+    };
+
+    const signature = await this.wallet.signTypedData(domain, types, value);
+
+    return {
+      signature,
+      authorization: {
+        from: this.wallet.address,
+        to,
+        value: amount.toString(),
+        validAfter: validAfter.toString(),
+        validBefore: validBefore.toString(),
+        nonce
+      }
+    };
   }
 
   async pay(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
-    const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
-    const orderIdBytes = ethers.id(orderId);
-    
-    const feeData = await this.provider.getFeeData();
-    const gasPrice = (feeData.gasPrice! * 120n) / 100n; // GasPrice * 1.2
+    const unlock = await this._lockNonce();
+    try {
+      const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
+      // convention: we hash the raw orderId string to bytes32 internally
+      const orderIdBytes = ethers.id(orderId);
+      
+      const feeData = await this.provider.getFeeData();
+      const gasPrice = (feeData.gasPrice! * 120n) / 100n;
 
-    const tx = await router.pay(tokenAddr, merchantAddr, amount, orderIdBytes, {
-      gasPrice,
-      gasLimit: 200000
-    });
-    const receipt = await tx.wait();
-    return receipt.hash;
+      const tx = await router.pay(tokenAddr, merchantAddr, amount, orderIdBytes, {
+        gasPrice,
+        gasLimit: 200000
+      });
+      const receipt = await tx.wait();
+      return receipt!.hash;
+    } finally {
+      unlock();
+    }
   }
 
-  async payWithPermit(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string): Promise<string> {
-    const sig = await this.signPermit(tokenAddr, contractAddr, amount);
-    const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
-    const orderIdBytes = ethers.id(orderId);
+  async payWithPermit(contractAddr: string, tokenAddr: string, merchantAddr: string, amount: bigint, orderId: string, version: string = '2'): Promise<string> {
+    const unlock = await this._lockNonce();
+    try {
+      const sig = await this.signPermit(tokenAddr, contractAddr, amount, 3600, version);
+      const router = new ethers.Contract(contractAddr, this.ROUTER_ABI, this.wallet);
+      // convention: we hash the raw orderId string to bytes32 internally
+      const orderIdBytes = ethers.id(orderId);
 
-    const feeData = await this.provider.getFeeData();
-    const gasPrice = (feeData.gasPrice! * 120n) / 100n;
+      const feeData = await this.provider.getFeeData();
+      const gasPrice = (feeData.gasPrice! * 120n) / 100n;
 
-    const tx = await router.payWithPermit(
-      this.wallet.address,
-      tokenAddr,
-      merchantAddr,
-      amount,
-      orderIdBytes,
-      sig.deadline,
-      sig.v,
-      sig.r,
-      sig.s,
-      { gasPrice, gasLimit: 300000 }
-    );
-    const receipt = await tx.wait();
-    return receipt.hash;
+      const tx = await router.payWithPermit(
+        this.wallet.address,
+        tokenAddr,
+        merchantAddr,
+        amount,
+        orderIdBytes,
+        sig.deadline,
+        sig.v,
+        sig.r,
+        sig.s,
+        { gasPrice, gasLimit: 300000 }
+      );
+      const receipt = await tx.wait();
+      return receipt!.hash;
+    } finally {
+      unlock();
+    }
   }
 
-  async signPermit(tokenAddr: string, spenderAddr: string, amount: bigint, deadlineSeconds: number = 3600) {
+  async signPermit(tokenAddr: string, spenderAddr: string, amount: bigint, deadlineSeconds: number = 3600, version: string = '2') {
     const deadline = Math.floor(Date.now() / 1000) + deadlineSeconds;
     const token = new ethers.Contract(tokenAddr, this.ERC20_ABI, this.wallet);
 
@@ -189,7 +348,7 @@ export class PayNodeAgentClient {
 
     const domain = {
       name,
-      version: '1', // USDC on Base uses version 1
+      version,
       chainId: Number(network.chainId),
       verifyingContract: tokenAddr
     };
@@ -216,5 +375,18 @@ export class PayNodeAgentClient {
     const { v, r, s } = ethers.Signature.from(signature);
 
     return { deadline, v, r, s };
+  }
+
+  private async _lockNonce(): Promise<() => void> {
+    let resolver: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      resolver = resolve;
+    });
+
+    const currentLock = this.nonceLock;
+    this.nonceLock = nextLock;
+
+    await currentLock;
+    return resolver!;
   }
 }

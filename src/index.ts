@@ -5,3 +5,4 @@ export * from './utils/webhook';
 export * from './client';
 export * from './errors';
 export * from './constants';
+export * from './types/x402';

@@ -1,6 +1,6 @@
 {
   "name": "@paynodelabs/sdk-js",
-  "version": "1.4.0",
+  "version": "2.1.0",
   "description": "The official JavaScript/TypeScript SDK for PayNode x402 protocol on Base L2.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,5 +39,8 @@
     "ts-jest": "^29.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.5"
   }
 }

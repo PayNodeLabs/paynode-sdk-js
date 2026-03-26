@@ -6,6 +6,12 @@ export interface IdempotencyStore {
    * @returns true if the hash was newly added, false if it already exists.
    */
   checkAndSet(txHash: string, ttlSeconds: number): Promise<boolean>;
+
+  /**
+   * Deletes a transaction hash from the store.
+   * Used for rolling back a lock if subsequent verification fails.
+   */
+  delete(txHash: string): Promise<void>;
 }
 
 /**
@@ -18,7 +24,10 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
 
   constructor() {
     // Basic cleanup interval
-    setInterval(() => this.cleanup(), 60000);
+    const interval = setInterval(() => this.cleanup(), 60000);
+    if (interval.unref) {
+      interval.unref();
+    }
   }
 
   async checkAndSet(txHash: string, ttlSeconds: number): Promise<boolean> {
@@ -31,6 +40,10 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
 
     this.cache.set(txHash, now + ttlSeconds);
     return true;
+  }
+
+  async delete(txHash: string): Promise<void> {
+    this.cache.delete(txHash);
   }
 
   private cleanup() {
@@ -60,5 +73,10 @@ export class RedisIdempotencyStore implements IdempotencyStore {
     const key = `${this.prefix}${txHash}`;
     const result = await this.redis.set(key, '1', 'EX', ttlSeconds, 'NX');
     return result === 'OK';
+  }
+
+  async delete(txHash: string): Promise<void> {
+    const key = `${this.prefix}${txHash}`;
+    await this.redis.del(key);
   }
 }
