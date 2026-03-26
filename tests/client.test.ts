@@ -1,5 +1,6 @@
 import { PayNodeAgentClient } from '../src/client';
 import { ErrorCode, PayNodeException } from '../src/errors';
+import { BASE_USDC_ADDRESS } from '../src/constants';
 
 // Pre-define mock objects
 const mockWallet = {
@@ -122,7 +123,7 @@ describe('PayNodeAgentClient Unit Tests', () => {
             accepts: [{
                 type: 'eip3009',
                 network: 'eip155:8453',
-                asset: '0x' + '2'.repeat(40),
+                asset: BASE_USDC_ADDRESS,
                 amount: '1000',
                 payTo: '0x' + '5'.repeat(40),
                 extra: { name: 'USD Coin', version: '2' }
@@ -173,7 +174,7 @@ describe('PayNodeAgentClient Unit Tests', () => {
             accepts: [{
                 type: 'onchain',
                 network: 'eip155:8453',
-                asset: '0x' + '2'.repeat(40),
+                asset: BASE_USDC_ADDRESS,
                 amount: '1000',
                 payTo: '0x' + '5'.repeat(40),
                 router: '0x' + '6'.repeat(40)
@@ -232,7 +233,7 @@ describe('PayNodeAgentClient Unit Tests', () => {
             accepts: [{
                 type: 'onchain',
                 network: 'eip155:8453',
-                asset: '0x' + '2'.repeat(40),
+                asset: BASE_USDC_ADDRESS,
                 amount: '500', // Below MIN_PAYMENT_AMOUNT (1000)
                 payTo: '0x' + '5'.repeat(40),
                 router: '0x' + '6'.repeat(40)
@@ -268,5 +269,27 @@ describe('PayNodeAgentClient Unit Tests', () => {
         } catch (error: any) {
             expect(error.code).toBe(ErrorCode.AmountTooLow);
         }
+    });
+
+    test('✅ signPermit should accept and use a custom version', async () => {
+        const tokenAddr = '0x' + '2'.repeat(40);
+        const spenderAddr = '0x' + '3'.repeat(40);
+        const amount = BigInt(1000);
+        
+        // Test with default version ('2')
+        await client.signPermit(tokenAddr, spenderAddr, amount);
+        expect(mockWallet.signTypedData).toHaveBeenCalledWith(
+            expect.objectContaining({ version: '2' }),
+            expect.anything(),
+            expect.anything()
+        );
+
+        // Test with custom version ('2')
+        await client.signPermit(tokenAddr, spenderAddr, amount, 3600, '2');
+        expect(mockWallet.signTypedData).toHaveBeenCalledWith(
+            expect.objectContaining({ version: '2' }),
+            expect.anything(),
+            expect.anything()
+        );
     });
 });

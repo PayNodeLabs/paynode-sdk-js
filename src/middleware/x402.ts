@@ -49,7 +49,12 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
   try {
       rawAmount = parseUnits(options.price, decimals);
   } catch (e) {
-      rawAmount = BigInt(Math.floor(parseFloat(options.price) * (10 ** decimals)));
+      // Robust fallback for non-standard number strings (avoiding floating point math)
+      const parts = options.price.split('.');
+      const integerPart = parts[0] || '0';
+      let fractionPart = parts[1] || '0';
+      fractionPart = fractionPart.slice(0, decimals).padEnd(decimals, '0');
+      rawAmount = BigInt(integerPart + fractionPart);
   }
 
   const defaultOrderIdGen = (req: any) => `agent_js_${Date.now()}`;
@@ -88,7 +93,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           amount: rawAmount.toString(),
           orderId: orderId
         },
-        unifiedPayload.type === 'eip3009' ? (unifiedPayload.payload as any)?.extra : {}
+        unifiedPayload.type === 'eip3009' ? { name: currency, version: "2" } : {}
       );
 
       if (result.isValid) {
@@ -143,11 +148,9 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
     if (res.set) {
       res.set('X-402-Required', b64Required);
+      res.set('X-402-Order-Id', orderId);
     }
 
     return res.status(402).json(v2Response);
   };
 };
-
-/** @deprecated Use x402Gate instead. */
-export const x402_gate = x402Gate;

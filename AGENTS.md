@@ -15,8 +15,8 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 4. **V2 Security:** Advanced double-spend protection (L1 memory cache + L2 RPC state) and empty-wallet proofing.
 5. **Currency:** USDC (6 decimals). Always use `ethers.parseUnits(amount, 6)`.
 6. **Smart Contract:**
-   - Base Mainnet (8453): `0x92e20164FC457a2aC35f53D06268168e6352b200`
-   - Base Sepolia (84532): `0xB587Bc36aaCf65962eCd6Ba59e2DA76f2f575408`
+   - Base Mainnet (8453): `0x4A73696ccF76E7381b044cB95127B3784369Ed63`
+   - Base Sepolia (84532): `0x24cD8b68aaC209217ff5a6ef1Bf55a59f2c8Ca6F`
 
 ## 🏗️ File Structure
 - `src/client.ts`: `PayNodeAgentClient` — autonomous 402 loop.
@@ -38,13 +38,13 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 
 ### For Merchant Code (Server-Side)
 - **Middleware:** `x402Gate(config)`.
-- **Handshake Headers:**
-  - `x-paynode-contract`: Router address
-  - `x-paynode-merchant`: Receiver wallet
-  - `x-paynode-amount`: Required amount (smallest unit, min 1000)
-  - `x-paynode-token-address`: ERC20 (USDC)
-  - `x-paynode-chain-id`: Network ID (8453 or 84532)
-  - `x-paynode-order-id`: Tracking ID
+- **Handshake Headers (X-402-* as per v2/v3.1 protocol):**
+  - `X-402-Contract`: Router address
+  - `X-402-Merchant`: Receiver wallet
+  - `X-402-Amount`: Required amount (smallest unit, min 1000)
+  - `X-402-Token-Address`: ERC20 (USDC)
+  - `X-402-Chain-Id`: Network ID (8453 or 84532)
+  - `X-402-Order-Id`: Tracking ID
 - **200 Verification Response:** Use the nested `payment_info` structure:
   ```json
   {

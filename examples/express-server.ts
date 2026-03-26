@@ -35,7 +35,7 @@ app.get('/api/premium-data', paynodeMiddleware, (req: any, res) => {
         message: "This is premium content only accessible after payment.",
         payment_info: {
             receipt: unifiedPayload.payload?.txHash || unifiedPayload.payload?.signature,
-            order_id: orderId,
+            orderId: orderId,
             payment_type: unifiedPayload.type
         }
     });

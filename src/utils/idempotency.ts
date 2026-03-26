@@ -24,7 +24,10 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
 
   constructor() {
     // Basic cleanup interval
-    setInterval(() => this.cleanup(), 60000);
+    const interval = setInterval(() => this.cleanup(), 60000);
+    if (interval.unref) {
+      interval.unref();
+    }
   }
 
   async checkAndSet(txHash: string, ttlSeconds: number): Promise<boolean> {

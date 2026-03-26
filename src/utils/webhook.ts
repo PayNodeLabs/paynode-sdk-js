@@ -12,7 +12,7 @@ export interface WebhookConfig {
   contractAddress?: string;
   /** The merchant's webhook endpoint URL */
   webhookUrl: string;
-  /** Secret key for HMAC-SHA256 signature (header: x-paynode-signature) */
+  /** Secret key for HMAC-SHA256 signature (header: X-402-Signature) */
   webhookSecret: string;
   /** Optional: chain ID for payload enrichment */
   chainId?: number;
@@ -60,7 +60,7 @@ const PAYNODE_ABI = [
  * ```ts
  * const notifier = new PayNodeWebhookNotifier({
  *   rpcUrl: 'https://mainnet.base.org',
- *   contractAddress: '0x92e20164FC457a2aC35f53D06268168e6352b200',
+ *   contractAddress: '0x4A73696ccF76E7381b044cB95127B3784369Ed63',
  *   webhookUrl: 'https://myshop.com/api/paynode-webhook',
  *   webhookSecret: 'whsec_mysecretkey123',
  * });
@@ -188,9 +188,9 @@ export class PayNodeWebhookNotifier {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-paynode-signature': `sha256=${signature}`,
-      'x-paynode-event': 'payment.received',
-      'x-paynode-delivery-id': `${event.txHash}-${attempt}`,
+      'X-402-Signature': `sha256=${signature}`,
+      'X-402-Event': 'payment.received',
+      'X-402-Delivery-Id': `${event.txHash}-${attempt}`,
       ...(this.config.customHeaders || {})
     };
 

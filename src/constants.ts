@@ -2,7 +2,7 @@
 export const PAYNODE_ROUTER_ADDRESS = "0x4A73696ccF76E7381b044cB95127B3784369Ed63";
 export const PAYNODE_ROUTER_ADDRESS_SANDBOX = "0x24cD8b68aaC209217ff5a6ef1Bf55a59f2c8Ca6F";
 export const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-export const BASE_USDC_ADDRESS_SANDBOX = "0x109AEddD656Ed2761d1e210E179329105039c784";
+export const BASE_USDC_ADDRESS_SANDBOX = "0x65c088EfBDB0E03185Dbe8e258Ad0cf4Ab7946b0";
 export const PROTOCOL_TREASURY = "0x598bF63F5449876efafa7b36b77Deb2070621C0E";
 export const PROTOCOL_FEE_BPS = 100;
 export const MIN_PAYMENT_AMOUNT = BigInt(1000);
@@ -12,5 +12,6 @@ export const BASE_RPC_URLS_SANDBOX = ["https://sepolia.base.org", "https://base-
 
 export const ACCEPTED_TOKENS: Record<number, string[]> = {
     8453: ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
-    84532: ["0x109AEddD656Ed2761d1e210E179329105039c784"]
+    84532: ["0x65c088EfBDB0E03185Dbe8e258Ad0cf4Ab7946b0"]
 };
+export const PAYNODE_ROUTER_ABI = ["function MAX_BPS() public", "function MIN_PAYMENT_AMOUNT() public", "function PROTOCOL_FEE_BPS() public", "function acceptOwnership() public", "function owner() public", "function pause() public", "function paused() public", "function pay(address token, address merchant, uint256 amount, bytes32 orderId) public", "function payWithPermit(address payer, address token, address merchant, uint256 amount, bytes32 orderId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public", "function pendingOwner() public", "function protocolTreasury() public", "function renounceOwnership() public", "function transferOwnership(address newOwner) public", "function unpause() public", "function updateTreasury(address _newTreasury) public", "event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner)", "event OwnershipTransferred(address indexed previousOwner, address indexed newOwner)", "event Paused(address account)", "event PaymentReceived(bytes32 indexed orderId, address indexed merchant, address indexed payer, address token, uint256 amount, uint256 fee, uint256 chainId)", "event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury)", "event Unpaused(address account)"];

@@ -25,7 +25,7 @@ export class PayNodeVerifier {
   private contractAddress: string;
   private chainId?: number;
   private store?: IdempotencyStore;
-  private acceptedTokens?: Set<string>;
+  private acceptedTokens: Set<string>;
 
   constructor(config: PayNodeVerifierConfig) {
     if (!config.rpcUrls || (Array.isArray(config.rpcUrls) && config.rpcUrls.length === 0)) {
@@ -57,9 +57,15 @@ export class PayNodeVerifier {
     } else if (config.chainId) {
       tokenList = ACCEPTED_TOKENS[config.chainId];
     }
-    if (tokenList && tokenList.length > 0) {
-      this.acceptedTokens = new Set(tokenList.map(t => t.toLowerCase()));
+
+    if (!tokenList || tokenList.length === 0) {
+      throw new PayNodeException(
+        ErrorCode.InternalError,
+        "Verifier requires either a valid chainId or acceptedTokens to initialize its whitelist"
+      );
     }
+
+    this.acceptedTokens = new Set(tokenList.map(t => t.toLowerCase()));
   }
 
   private static ROUTER_ABI = [
@@ -75,12 +81,8 @@ export class PayNodeVerifier {
       const { type, payload, orderId } = unifiedPayload;
 
       if (type === 'eip3009') {
-        const tokenAddr = expected.tokenAddress;
-        if (!tokenAddr) {
-          return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted, "tokenAddress is required for eip3009 verification") };
-        }
         const actualPayload = payload as ExactEVMPayload;
-        return await this.verifyTransferWithAuthorization(tokenAddr, actualPayload, {
+        return await this.verifyTransferWithAuthorization(expected.tokenAddress, actualPayload, {
           to: expected.merchantAddress,
           value: expected.amount
         }, extra);
@@ -106,37 +108,62 @@ export class PayNodeVerifier {
 
   async verifyOnchainPayment(txHash: string, expected: any): Promise<{ isValid: boolean; error?: PayNodeException }> {
     try {
+      // 1. Security Checks
+      if (BigInt(expected.amount) < MIN_PAYMENT_AMOUNT) {
+        return { isValid: false, error: new PayNodeException(ErrorCode.AmountTooLow) };
+      }
+      if (!this.acceptedTokens.has(expected.tokenAddress.toLowerCase())) {
+        return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted) };
+      }
+
       const receipt = await this.provider.getTransactionReceipt(txHash);
       if (!receipt || receipt.status === 0) {
         return { isValid: false, error: new PayNodeException(ErrorCode.TransactionNotFound) };
       }
 
       const router = new ethers.Interface(PayNodeVerifier.ROUTER_ABI);
+      // convention: we hash the raw orderId string to bytes32 internally
       const targetOrderId = ethers.id(expected.orderId);
       
       let validEventFound = false;
+      let routerInteracted = false;
+      let orderIdMismatchFound = false;
       for (const log of receipt.logs) {
         try {
-          const parsed = router.parseLog(log);
-          if (parsed && parsed.name === 'PaymentReceived') {
-            const { merchant, token, amount, orderId } = parsed.args;
+            if (log.address.toLowerCase() !== this.contractAddress.toLowerCase()) continue;
+            routerInteracted = true;
 
-            if (
-              merchant.toLowerCase() === expected.merchantAddress.toLowerCase() &&
-              token.toLowerCase() === expected.tokenAddress.toLowerCase() &&
-              BigInt(amount) >= BigInt(expected.amount) &&
-              orderId === targetOrderId
-            ) {
-              validEventFound = true;
-              break;
+            const parsed = router.parseLog(log);
+            if (parsed && parsed.name === 'PaymentReceived') {
+              const { merchant, token, amount, orderId } = parsed.args;
+
+              const isMerchantMatch = merchant.toLowerCase() === expected.merchantAddress.toLowerCase();
+              const isTokenMatch = token.toLowerCase() === expected.tokenAddress.toLowerCase();
+              const isAmountMatch = BigInt(amount) >= BigInt(expected.amount);
+              const isOrderMatch = orderId === targetOrderId;
+
+              if (isMerchantMatch && isTokenMatch && isAmountMatch) {
+                if (isOrderMatch) {
+                  validEventFound = true;
+                  break;
+                } else {
+                  orderIdMismatchFound = true;
+                }
+              }
             }
-          }
         } catch (e) {
           // Skip
         }
       }
 
+      if (!routerInteracted) {
+        return { isValid: false, error: new PayNodeException(ErrorCode.WrongContract, "Transaction did not interact with the configured PayNodeRouter contract") };
+      }
+
       if (!validEventFound) {
+        if (orderIdMismatchFound) {
+          return { isValid: false, error: new PayNodeException(ErrorCode.OrderMismatch, "Payment log found but orderId does not match") };
+        }
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "No matching PaymentReceived event found") };
       }
 
@@ -167,12 +194,20 @@ export class PayNodeVerifier {
     extra: Record<string, any> = {}
   ): Promise<{ isValid: boolean; error?: PayNodeException }> {
     try {
+      // 1. Security Checks
+      if (BigInt(expected.value) < MIN_PAYMENT_AMOUNT) {
+        return { isValid: false, error: new PayNodeException(ErrorCode.AmountTooLow) };
+      }
+      if (!this.acceptedTokens.has(tokenAddr.toLowerCase())) {
+        return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted) };
+      }
+
       const { signature, authorization } = payload;
       const { from, to, value, validAfter, validBefore, nonce } = authorization;
       const expectedValue = BigInt(expected.value);
       const payloadValue = BigInt(value);
 
-      // 1. 基础字段与金额校验 (防粉尘攻击)
+      // 2. 基础字段与金额校验 (防粉尘攻击)
       if (to.toLowerCase() !== expected.to.toLowerCase()) {
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Recipient mismatch") };
       }

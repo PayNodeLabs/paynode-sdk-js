@@ -33,7 +33,7 @@ async function main() {
 main();
 ```
 
-### Key Features (v2.0)
+### Key Features (v2.1)
 - **Zero-Wait Checkout**: API response speed drops from 5 seconds to **under 50ms** by using local signatures instead of waiting for on-chain inclusion.
 - **Double-Spend Protection**: 
   - **L1 (Memory)**: High-speed local replay protection via `IdempotencyStore`.
