@@ -193,6 +193,10 @@ export class PayNodeVerifier {
     },
     extra: Record<string, any> = {}
   ): Promise<{ isValid: boolean; error?: PayNodeException }> {
+    let isLocked = false;
+    const { signature, authorization } = payload;
+    const nonce = authorization?.nonce;
+
     try {
       // 1. Security Checks
       if (BigInt(expected.value) < MIN_PAYMENT_AMOUNT) {
@@ -202,8 +206,7 @@ export class PayNodeVerifier {
         return { isValid: false, error: new PayNodeException(ErrorCode.TokenNotAccepted) };
       }
 
-      const { signature, authorization } = payload;
-      const { from, to, value, validAfter, validBefore, nonce } = authorization;
+      const { from, to, value, validAfter, validBefore } = authorization;
       const expectedValue = BigInt(expected.value);
       const payloadValue = BigInt(value);
 
@@ -253,8 +256,9 @@ export class PayNodeVerifier {
       if (this.store) {
         const isNew = await this.store.checkAndSet(nonce, 86400); // 锁定 24 小时
         if (!isNew) {
-          return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction, "Nonce already used in local memory") };
+          return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction, "Nonce already used or transaction already consumed") };
         }
+        isLocked = true;
       }
 
       // ================= 核心补全：RPC 状态只读校验 (<50ms) =================
@@ -276,20 +280,21 @@ export class PayNodeVerifier {
 
       // 5. 校验真实余额 (防止空钱包签署有效签名)
       if (BigInt(balance) < payloadValue) {
-        // 如果验签失败，释放内存锁
-        if (this.store) await this.store.delete(nonce);
+        if (isLocked && this.store) await this.store.delete(nonce);
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Insufficient token balance") };
       }
 
       // 6. 校验链上 Nonce 状态 (防止该签名已被打包结算)
       if (isNonceUsedOnChain) {
-        if (this.store) await this.store.delete(nonce);
+        if (isLocked && this.store) await this.store.delete(nonce);
         return { isValid: false, error: new PayNodeException(ErrorCode.DuplicateTransaction, "Nonce already consumed on-chain") };
       }
       // =======================================================================
 
       return { isValid: true };
     } catch (e: any) {
+      if (isLocked && this.store) await this.store.delete(nonce);
+      if (e instanceof PayNodeException) return { isValid: false, error: e };
       return { isValid: false, error: new PayNodeException(ErrorCode.InternalError, e.message) };
     }
   }
