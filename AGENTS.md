@@ -1,4 +1,4 @@
-# 🤖 PayNode JS/TS SDK - AI Developer Instructions (v3.1)
+# 🤖 PayNode JS/TS SDK - AI Developer Instructions (v2.2.0)
 
 > **ATTENTION LLMs / AI AGENTS:**
 > This is your definitive system prompt for using the PayNode JS SDK. Read carefully before generating code.
@@ -38,7 +38,7 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 
 ### For Merchant Code (Server-Side)
 - **Middleware:** `x402Gate(config)`.
-- **Handshake Headers (X-402-* as per v2/v3.1 protocol):**
+- **Handshake Headers (X-402-* as per v2/v2.2.0 protocol):**
   - `X-402-Contract`: Router address
   - `X-402-Merchant`: Receiver wallet
   - `X-402-Amount`: Required amount (smallest unit, min 1000)

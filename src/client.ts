@@ -3,6 +3,7 @@ import { PayNodeException, ErrorCode } from './errors';
 import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI } from './constants';
 import { 
   PaymentRequiredResponse, 
+  PaymentPayload,
   ExactEVMPayload,
   UnifiedPaymentPayload
 } from './types/x402';
@@ -52,7 +53,11 @@ export class PayNodeAgentClient {
       try {
         const response = await fetch(url, options);
 
-        if (!response || !RETRYABLE_STATUS_CODES.has(response.status)) {
+        if (!response) {
+          throw new Error('fetch returned undefined');
+        }
+
+        if (!RETRYABLE_STATUS_CODES.has(response.status)) {
           return response;
         }
 
@@ -95,7 +100,7 @@ export class PayNodeAgentClient {
         console.log(`💡 [PayNode-JS] 402 Payment Required detected. Analyzing protocol version...`);
         
         const contentType = response.headers.get('content-type');
-        const b64Required = response.headers.get('X-402-Required');
+        const b64Required = response.headers.get('PAYMENT-REQUIRED') || response.headers.get('X-402-Required');
         const orderId = response.headers.get('X-402-Order-Id');
         
         let body: any = null;
@@ -108,13 +113,13 @@ export class PayNodeAgentClient {
               : atob(b64Required);
             body = JSON.parse(decoded);
           } catch (e) {
-            console.debug('⚠️ [PayNode-JS] Failed to parse X-402-Required header:', e);
+            console.debug('⚠️ [PayNode-JS] Failed to parse PAYMENT-REQUIRED header:', e);
           }
         }
 
         if (body && body.x402Version === 2) {
             console.log(`🚀 [PayNode-JS] x402 v2 detected. Handling autonomous payment...`);
-            if (orderId) body.orderId = orderId;
+            if (orderId && !body.orderId) body.orderId = orderId;
             return await this._handleX402V2(url, fetchOptions, body as PaymentRequiredResponse);
         }
 
@@ -135,7 +140,7 @@ export class PayNodeAgentClient {
     const caip2ChainId = `eip155:${chainId}`;
 
     // Select suitable requirement
-    const requirement = requirements.accepts.find((req: any) => 
+    const requirement = requirements.accepts.find((req) => 
       req.network === caip2ChainId
     );
 
@@ -156,7 +161,7 @@ export class PayNodeAgentClient {
       throw new PayNodeException(ErrorCode.AmountTooLow, `Payment amount ${requirement.amount} is below the minimum dust limit`);
     }
 
-    let payload: UnifiedPaymentPayload;
+    let payload: PaymentPayload;
 
     if (requirement.type === 'eip3009') {
       const validAfter = Math.floor(Date.now() / 1000) - 60;
@@ -174,10 +179,23 @@ export class PayNodeAgentClient {
       );
 
       payload = {
-        version: "3.1",
-        type: 'eip3009',
-        orderId,
-        payload: authorization
+        x402Version: 2,
+        resource: requirements.resource,
+        accepted: {
+          scheme: requirement.scheme,
+          network: requirement.network,
+          amount: requirement.amount,
+          asset: requirement.asset,
+          payTo: requirement.payTo,
+          maxTimeoutSeconds: requirement.maxTimeoutSeconds,
+          extra: requirement.extra || {}
+        },
+        payload: authorization,
+        _paynode: {
+          version: "2.2.0",
+          type: 'eip3009',
+          orderId: orderId
+        }
       };
     } else {
       // type: 'onchain' or fallback
@@ -204,31 +222,67 @@ export class PayNodeAgentClient {
       }
 
       payload = {
-        version: "3.1",
-        type: 'onchain',
-        orderId,
-        payload: { txHash }
+        x402Version: 2,
+        resource: requirements.resource,
+        accepted: {
+          scheme: requirement.scheme,
+          network: requirement.network,
+          amount: requirement.amount,
+          asset: requirement.asset,
+          payTo: requirement.payTo,
+          maxTimeoutSeconds: requirement.maxTimeoutSeconds,
+          router: requirement.router,
+          extra: requirement.extra || {}
+        },
+        payload: { txHash },
+        _paynode: {
+          version: "2.2.0",
+          type: 'onchain',
+          orderId: orderId
+        }
       };
     }
 
-    const json = JSON.stringify(payload);
+    const payloadJson = JSON.stringify(payload);
     const b64Payload = typeof globalThis.Buffer !== 'undefined'
-      ? globalThis.Buffer.from(json).toString('base64')
-      : btoa(json);
+      ? globalThis.Buffer.from(payloadJson).toString('base64')
+      : btoa(payloadJson);
+    
     const retryOptions: RequestInit = {
       ...options,
       headers: {
         ...options.headers,
         'Content-Type': 'application/json',
-        'X-402-Payload': b64Payload,
+        'PAYMENT-SIGNATURE': b64Payload,
+        'X-402-Payload': b64Payload, // Keep for backward compatibility
         'X-402-Order-Id': orderId
       }
     };
 
     const retryResponse = await this._fetchWithRetry(url, retryOptions);
+    
     if (retryResponse.status === 402) {
       throw new PayNodeException(ErrorCode.TransactionFailed, "Still 402 after payment attempt. The server may have rejected the payment or authorization.");
     }
+
+    // Attempt to parse PAYMENT-RESPONSE header
+    const settleHeader = retryResponse.headers.get('PAYMENT-RESPONSE') || retryResponse.headers.get('X-PAYMENT-RESPONSE');
+    if (settleHeader) {
+      try {
+        const decoded = typeof globalThis.Buffer !== 'undefined'
+          ? globalThis.Buffer.from(settleHeader, 'base64').toString()
+          : atob(settleHeader);
+        const settleData = JSON.parse(decoded);
+        if (settleData.success) {
+          console.log(`✅ [PayNode-JS] Settlement confirmed: ${settleData.transaction}`);
+        } else {
+          console.warn(`⚠️ [PayNode-JS] Settlement failed: ${settleData.errorReason || 'Unknown error'}`);
+        }
+      } catch (e) {
+        console.warn(`⚠️ [PayNode-JS] Failed to parse settlement response:`, e);
+      }
+    }
+
     return retryResponse;
   }
 
