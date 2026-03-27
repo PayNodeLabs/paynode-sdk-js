@@ -3,7 +3,7 @@
 [![Official Documentation](https://img.shields.io/badge/Docs-docs.paynode.dev-00ff88?style=for-the-badge&logo=readthedocs)](https://docs.paynode.dev)
 [![NPM Version](https://img.shields.io/npm/v/@paynodelabs/sdk-js.svg?style=for-the-badge)](https://www.npmjs.com/package/@paynodelabs/sdk-js)
 
-The official TypeScript/JavaScript SDK for the **PayNode Protocol (v2.2.0)**. PayNode is a stateless, non-custodial M2M payment gateway that standardizes the HTTP 402 "Payment Required" flow for AI Agents, with support for both on-chain receipts and off-chain signatures (EIP-3009).
+The official TypeScript/JavaScript SDK for the **PayNode Protocol (v2.2.1)**. PayNode is a stateless, non-custodial M2M payment gateway that standardizes the HTTP 402 "Payment Required" flow for AI Agents, with support for both on-chain receipts and off-chain signatures (EIP-3009).
 
 ## 📖 Read the Docs
 
@@ -33,7 +33,7 @@ async function main() {
 main();
 ```
 
-### Key Features (v2.2.0)
+### Key Features (v2.2.1)
 - **Zero-Wait Checkout**: API response speed drops from 5 seconds to **under 50ms** by using local signatures instead of waiting for on-chain inclusion.
 - **Double-Spend Protection**: 
   - **L1 (Memory)**: High-speed local replay protection via `IdempotencyStore`.
