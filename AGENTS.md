@@ -21,7 +21,7 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 ## 🏗️ File Structure
 - `src/client.ts`: `PayNodeAgentClient` — autonomous 402 loop.
 - `src/middleware/`: `x402Gate` — Express/Koa merchant protection.
-- `src/constants.ts`: Protocol constants (sync via `scripts/sync-config.py`).
+- `src/constants.ts`: Protocol constants (sync via `meta/scripts/sync-config.py` in the aggregate workspace).
 - `src/errors/`: `PayNodeException` + standard error codes.
 - `src/types/`: TypeScript interfaces for protocol objects.
 - `src/utils/`: Signature helpers, RPC failover, gas estimation.
