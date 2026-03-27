@@ -5,7 +5,11 @@ import { PayNodeAgentClient } from '../src';
  * Verifies both V1 (On-chain) and V2 (Signature-based) flows using the official JS SDK.
  */
 async function runTests() {
-  const DEMO_KEY = "0xa6ad297ea9f4b96afa3065b6a4e5101a0980815f9630fb58492a4bd2f958459e";
+  const DEMO_KEY = process.env.CLIENT_PRIVATE_KEY;
+  if (!DEMO_KEY) {
+      console.error("❌ CLIENT_PRIVATE_KEY environment variable is required.");
+      process.exit(1);
+  }
   const RPC_URL = "https://sepolia.base.org"; // Ensure this matches the network in handshakes
 
   const client = new PayNodeAgentClient(DEMO_KEY, RPC_URL);
