@@ -94,14 +94,14 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           }
           
           unifiedPayload = {
-            version: "2.2.0",
+            version: "2.2.1",
             type: parsed._paynode?.type || inferredType,
             orderId: internalOrderId,
             router: parsed.accepted?.router,
             payload: parsed.payload
           };
           orderId = internalOrderId;
-        } else if (parsed.version === "2.2.0") {
+        } else if (typeof parsed.version === 'string' && (parsed.version.startsWith("2.3") || parsed.version.startsWith("2.2"))) {
           // Legacy PayNode format
           unifiedPayload = parsed;
           if (unifiedPayload?.orderId) {

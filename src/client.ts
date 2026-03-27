@@ -104,17 +104,28 @@ export class PayNodeAgentClient {
         const orderId = response.headers.get('X-402-Order-Id');
         
         let body: any = null;
-        if (contentType && contentType.includes('application/json')) {
-          body = await response.clone().json();
-        } else if (b64Required) {
+        let headerBody: any = null;
+
+        if (b64Required) {
           try {
             const decoded = typeof globalThis.Buffer !== 'undefined'
               ? globalThis.Buffer.from(b64Required, 'base64').toString()
               : atob(b64Required);
-            body = JSON.parse(decoded);
+            headerBody = JSON.parse(decoded);
           } catch (e) {
             console.debug('⚠️ [PayNode-JS] Failed to parse PAYMENT-REQUIRED header:', e);
           }
+        }
+
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            body = await response.clone().json();
+          } catch (e) { /* ignore */ }
+        }
+
+        // Robustness: Merge header info into body if body is missing critical bits
+        if (headerBody && (!body || !body.x402Version)) {
+          body = { ...body, ...headerBody };
         }
 
         if (body && body.x402Version === 2) {
@@ -192,7 +203,7 @@ export class PayNodeAgentClient {
         },
         payload: authorization,
         _paynode: {
-          version: "2.2.0",
+          version: "2.2.1",
           type: 'eip3009',
           orderId: orderId
         }
@@ -236,7 +247,7 @@ export class PayNodeAgentClient {
         },
         payload: { txHash },
         _paynode: {
-          version: "2.2.0",
+          version: "2.2.1",
           type: 'onchain',
           orderId: orderId
         }
@@ -269,9 +280,14 @@ export class PayNodeAgentClient {
     const settleHeader = retryResponse.headers.get('PAYMENT-RESPONSE') || retryResponse.headers.get('X-PAYMENT-RESPONSE');
     if (settleHeader) {
       try {
-        const decoded = typeof globalThis.Buffer !== 'undefined'
-          ? globalThis.Buffer.from(settleHeader, 'base64').toString()
-          : atob(settleHeader);
+        let decoded: string;
+        if (settleHeader.trim().startsWith('{')) {
+          decoded = settleHeader;
+        } else {
+          decoded = typeof globalThis.Buffer !== 'undefined'
+            ? globalThis.Buffer.from(settleHeader, 'base64').toString()
+            : atob(settleHeader);
+        }
         const settleData = JSON.parse(decoded);
         if (settleData.success) {
           console.log(`✅ [PayNode-JS] Settlement confirmed: ${settleData.transaction}`);
