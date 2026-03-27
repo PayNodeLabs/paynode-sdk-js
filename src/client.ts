@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PayNodeException, ErrorCode } from './errors';
-import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI } from './constants';
+import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI, SDK_VERSION } from './constants';
 import { 
   PaymentRequiredResponse, 
   PaymentPayload,
@@ -159,6 +159,8 @@ export class PayNodeAgentClient {
       throw new PayNodeException(ErrorCode.TransactionFailed, `No compatible payment requirement found for network ${caip2ChainId}`);
     }
 
+    console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type || 'onchain'} on ${requirement.network}`);
+
     // 🛡️ Token Whitelist Check (Case-insensitive)
     const chainTokens = ACCEPTED_TOKENS[chainId]?.map(t => t.toLowerCase());
     if (chainTokens && !chainTokens.includes(requirement.asset.toLowerCase())) {
@@ -203,7 +205,7 @@ export class PayNodeAgentClient {
         },
         payload: authorization,
         _paynode: {
-          version: "2.2.1",
+          version: SDK_VERSION,
           type: 'eip3009',
           orderId: orderId
         }
@@ -247,7 +249,7 @@ export class PayNodeAgentClient {
         },
         payload: { txHash },
         _paynode: {
-          version: "2.2.1",
+          version: SDK_VERSION,
           type: 'onchain',
           orderId: orderId
         }
