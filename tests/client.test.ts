@@ -160,11 +160,12 @@ describe('PayNodeAgentClient Unit Tests', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
 
         const lastCallArgs = (global.fetch as jest.Mock).mock.calls[1];
-        const payloadBase64 = lastCallArgs[1].headers['X-402-Payload'];
+        const payloadBase64 = lastCallArgs[1].headers['PAYMENT-SIGNATURE'];
         const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString());
         
-        expect(payload.type).toBe('eip3009');
-        expect(payload.orderId).toBe(orderId);
+        expect(payload.x402Version).toBe(2);
+        expect(payload._paynode.type).toBe('eip3009');
+        expect(payload._paynode.orderId).toBe(orderId);
         expect(payload.payload.signature).toMatch(validSignaturePattern);
     });
 
@@ -213,10 +214,11 @@ describe('PayNodeAgentClient Unit Tests', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
 
         const lastCallArgs = (global.fetch as jest.Mock).mock.calls[1];
-        const payloadBase64 = lastCallArgs[1].headers['X-402-Payload'];
+        const payloadBase64 = lastCallArgs[1].headers['PAYMENT-SIGNATURE'];
         const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString());
         
-        expect(payload.type).toBe('onchain');
+        expect(payload.x402Version).toBe(2);
+        expect(payload._paynode.type).toBe('onchain');
         expect(payload.payload.txHash).toBe('0xHash');
     });
 

@@ -37,8 +37,13 @@ export interface PaymentPayload {
   x402Version: X402Version;
   resource?: ResourceInfo;
   accepted: PaymentRequirements;
-  payload: Record<string, any>;
+  payload: Record<string, any> | ExactEVMPayload | { txHash: string };
   extensions?: Record<string, any>;
+  _paynode?: {
+    version: string;
+    type: "onchain" | "eip3009";
+    orderId: string;
+  };
 }
 
 export interface ExactEVMPayload {
@@ -69,9 +74,10 @@ export interface VerifyResponse {
 }
 
 export interface UnifiedPaymentPayload {
-  version: "3.1";
+  version: "2.2.0";
   type: "onchain" | "eip3009";
   orderId: string;
+  router?: string;
   payload: {
     txHash?: string;
     signature?: string;

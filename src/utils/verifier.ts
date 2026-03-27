@@ -76,7 +76,7 @@ export class PayNodeVerifier {
     unifiedPayload: UnifiedPaymentPayload,
     expected: ExpectedPayment,
     extra?: any
-  ): Promise<{ isValid: boolean; error?: PayNodeException }> {
+  ): Promise<{ isValid: boolean; error?: PayNodeException; payer?: string }> {
     try {
       const { type, payload, orderId } = unifiedPayload;
 
@@ -106,7 +106,7 @@ export class PayNodeVerifier {
     }
   }
 
-  async verifyOnchainPayment(txHash: string, expected: any): Promise<{ isValid: boolean; error?: PayNodeException }> {
+  async verifyOnchainPayment(txHash: string, expected: any): Promise<{ isValid: boolean; error?: PayNodeException; payer?: string }> {
     try {
       // 1. Security Checks
       if (BigInt(expected.amount) < MIN_PAYMENT_AMOUNT) {
@@ -126,6 +126,7 @@ export class PayNodeVerifier {
       const targetOrderId = ethers.id(expected.orderId);
       
       let validEventFound = false;
+      let foundPayer: string | undefined = undefined;
       let routerInteracted = false;
       let orderIdMismatchFound = false;
       for (const log of receipt.logs) {
@@ -135,7 +136,7 @@ export class PayNodeVerifier {
 
             const parsed = router.parseLog(log);
             if (parsed && parsed.name === 'PaymentReceived') {
-              const { merchant, token, amount, orderId } = parsed.args;
+              const { merchant, token, amount, orderId, payer } = parsed.args;
 
               const isMerchantMatch = merchant.toLowerCase() === expected.merchantAddress.toLowerCase();
               const isTokenMatch = token.toLowerCase() === expected.tokenAddress.toLowerCase();
@@ -145,6 +146,7 @@ export class PayNodeVerifier {
               if (isMerchantMatch && isTokenMatch && isAmountMatch) {
                 if (isOrderMatch) {
                   validEventFound = true;
+                  foundPayer = payer;
                   break;
                 } else {
                   orderIdMismatchFound = true;
@@ -174,7 +176,7 @@ export class PayNodeVerifier {
         }
       }
 
-      return { isValid: true };
+      return { isValid: true, payer: foundPayer };
     } catch (error) {
       return { isValid: false, error: new PayNodeException(ErrorCode.RpcError, undefined, error) };
     }
@@ -192,7 +194,7 @@ export class PayNodeVerifier {
       value: string | number | bigint;
     },
     extra: Record<string, any> = {}
-  ): Promise<{ isValid: boolean; error?: PayNodeException }> {
+  ): Promise<{ isValid: boolean; error?: PayNodeException; payer?: string }> {
     let isLocked = false;
     const { signature, authorization } = payload;
     const nonce = authorization?.nonce;
@@ -291,7 +293,7 @@ export class PayNodeVerifier {
       }
       // =======================================================================
 
-      return { isValid: true };
+      return { isValid: true, payer: from };
     } catch (e: any) {
       if (isLocked && this.store) await this.store.delete(nonce);
       if (e instanceof PayNodeException) return { isValid: false, error: e };

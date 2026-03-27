@@ -67,7 +67,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
         return null;
     };
 
-    const v2PayloadHeader = getHeader('X-402-Payload');
+    const v2PayloadHeader = getHeader('PAYMENT-SIGNATURE') || getHeader('X-402-Payload');
     let orderId = getHeader('X-402-Order-Id');
 
     if (!orderId) {
@@ -78,9 +78,40 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
     let unifiedPayload: UnifiedPaymentPayload | null = null;
     if (v2PayloadHeader) {
       try {
-        unifiedPayload = JSON.parse(Buffer.from(v2PayloadHeader, 'base64').toString());
+        const parsed = JSON.parse(Buffer.from(v2PayloadHeader, 'base64').toString());
+        
+        if (parsed.x402Version === 2 && parsed.accepted) {
+          // Official X402 V2 format - convert to internal format
+          const internalOrderId = parsed._paynode?.orderId 
+                               || orderId 
+                               || `auto_${Date.now()}`;
+          
+          let inferredType: "onchain" | "eip3009" = "onchain";
+          if (parsed.payload?.signature || parsed.payload?.authorization) {
+            inferredType = "eip3009";
+          } else if (parsed.payload?.txHash) {
+            inferredType = "onchain";
+          }
+          
+          unifiedPayload = {
+            version: "2.2.0",
+            type: parsed._paynode?.type || inferredType,
+            orderId: internalOrderId,
+            router: parsed.accepted?.router,
+            payload: parsed.payload
+          };
+          orderId = internalOrderId;
+        } else if (parsed.version === "2.2.0") {
+          // Legacy PayNode format
+          unifiedPayload = parsed;
+          if (unifiedPayload?.orderId) {
+            orderId = unifiedPayload.orderId;
+          } else if ((unifiedPayload as any)?.order_id) {
+            orderId = (unifiedPayload as any).order_id;
+          }
+        }
       } catch (e) {
-        console.error("❌ [PayNode-Middleware] Failed to decode X-402-Payload header:", e);
+        console.error("❌ [PayNode-Middleware] Failed to decode payment payload header:", e);
       }
     }
 
@@ -91,31 +122,59 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           merchantAddress: options.merchantAddress,
           tokenAddress: tokenAddress,
           amount: rawAmount.toString(),
-          orderId: orderId
+          orderId: orderId || undefined
         },
         unifiedPayload.type === 'eip3009' ? { name: currency, version: "2" } : {}
       );
 
       if (result.isValid) {
+        // Construct settlement response header
+        const settleResponse = {
+          success: true,
+          transaction: (unifiedPayload.payload as any).txHash || "",
+          network: `eip155:${chainId}`,
+          payer: result.payer || ""
+        };
+        const b64Response = Buffer.from(JSON.stringify(settleResponse)).toString('base64');
+        
+        if (res.set) {
+          res.set('PAYMENT-RESPONSE', b64Response);
+          res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility
+        }
+
         req.paynode = { unifiedPayload, orderId };
         return next();
       } else {
+        const errorReason = result.error?.code || ErrorCode.InvalidReceipt;
+        const settleResponse = {
+          success: false,
+          errorReason: errorReason,
+          transaction: "",
+          network: `eip155:${chainId}`
+        };
+        const b64Response = Buffer.from(JSON.stringify(settleResponse)).toString('base64');
+        
+        if (res.set) {
+          res.set('PAYMENT-RESPONSE', b64Response);
+          res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility
+        }
+
         return res.status(403).json({
           error: "Forbidden",
-          code: result.error?.code || ErrorCode.InvalidReceipt,
+          code: errorReason,
           message: result.error?.message || "Invalid X402 payment payload"
         });
       }
     }
 
-    // No valid payment found, return 402 with X-402-Required
+    // No valid payment found, return 402 with appropriate headers
     const v2Response: PaymentRequiredResponse = {
       x402Version: 2,
       error: "Payment Required by PayNode",
       resource: {
-        url: req.protocol + '://' + req.get('host') + req.originalUrl,
+        url: req.protocol + '://' + req.get('host') + (req.originalUrl || req.url),
         description: options.description || "Protected Resource",
-        mimeType: req.header('accept') || "application/json"
+        mimeType: getHeader('accept') || "application/json"
       },
       accepts: [
         {
@@ -147,6 +206,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
     const b64Required = Buffer.from(JSON.stringify(v2Response)).toString('base64');
 
     if (res.set) {
+      res.set('PAYMENT-REQUIRED', b64Required);
       res.set('X-402-Required', b64Required);
       res.set('X-402-Order-Id', orderId);
     }
