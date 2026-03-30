@@ -85,11 +85,19 @@ export class PayNodeAgentClient {
   async requestGate(url: string, options: RequestOptions = {}): Promise<Response> {
     const fetchOptions: RequestInit = { ...options };
     
+    const network = await this.provider.getNetwork();
+    const paynodeNetwork = Number(network.chainId) === 8453 ? 'mainnet' : 'testnet';
+
+    fetchOptions.headers = {
+      'X-PayNode-Network': paynodeNetwork,
+      ...fetchOptions.headers
+    };
+
     if (options.json && !fetchOptions.body) {
       fetchOptions.body = JSON.stringify(options.json);
       fetchOptions.headers = {
-        'Content-Type': 'application/json',
-        ...fetchOptions.headers
+        ...fetchOptions.headers,
+        'Content-Type': 'application/json'
       };
     }
 
@@ -261,6 +269,8 @@ export class PayNodeAgentClient {
       ? globalThis.Buffer.from(payloadJson).toString('base64')
       : btoa(payloadJson);
     
+    const paynodeNetwork = chainId === 8453 ? 'mainnet' : 'testnet';
+
     const retryOptions: RequestInit = {
       ...options,
       headers: {
@@ -268,7 +278,8 @@ export class PayNodeAgentClient {
         'Content-Type': 'application/json',
         'PAYMENT-SIGNATURE': b64Payload,
         'X-402-Payload': b64Payload, // Keep for backward compatibility
-        'X-402-Order-Id': orderId
+        'X-402-Order-Id': orderId,
+        'X-PayNode-Network': paynodeNetwork
       }
     };
 
@@ -314,11 +325,13 @@ export class PayNodeAgentClient {
     extra: Record<string, any> = {}
   ): Promise<ExactEVMPayload> {
     const network = await this.provider.getNetwork();
+    const chainId = Number(network.chainId);
+    const defaultName = chainId === 8453 ? "USDC" : "USD Coin";
     
     const domain = {
-      name: extra.name || "USD Coin",
+      name: extra.name || defaultName,
       version: extra.version || "2",
-      chainId: Number(network.chainId),
+      chainId: chainId,
       verifyingContract: tokenAddr
     };
 

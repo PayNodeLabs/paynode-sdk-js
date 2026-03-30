@@ -57,7 +57,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
     rawAmount = BigInt(integerPart + fractionPart);
   }
 
-  const defaultOrderIdGen = (req: any) => `agent_js_${Date.now()}`;
+  const defaultOrderIdGen = (req: any) => `pn_sdk_${Date.now()}`;
 
   return async (req: Request | any, res: Response | any, next: NextFunction) => {
     // ... rest of the logic
