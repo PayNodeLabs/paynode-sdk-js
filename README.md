@@ -104,4 +104,18 @@ To publish a new version of the SDK:
 
 ---
 
+## Versioning Guide
+
+PayNode uses two distinct versioning schemes:
+
+| Version Type | Description | Current Value |
+| :--- | :--- | :--- |
+| **Protocol Version** | On-chain contracts & core x402 data schema. | `1.4.0` |
+| **SDK/Product Version** | Software package version (npm/SemVer). | `2.2.2` |
+
+> [!NOTE]
+> Protocol Version changes imply breaking changes in verification or contract interfaces. SDK Version changes may include features, fixes, or performance improvements without altering protocol logic.
+
+---
+
 _Built for the Autonomous AI Economy by PayNodeLabs._

@@ -3,14 +3,14 @@ import { ErrorCode } from '../errors';
 import { PayNodeVerifier, PayNodeVerifierConfig } from '../utils/verifier';
 import { IdempotencyStore } from '../utils/idempotency';
 import { parseUnits } from 'ethers';
-import { 
-  BASE_RPC_URLS, 
-  PAYNODE_ROUTER_ADDRESS, 
-  BASE_USDC_ADDRESS 
+import {
+  BASE_RPC_URLS,
+  PAYNODE_ROUTER_ADDRESS,
+  BASE_USDC_ADDRESS
 } from '../constants';
-import { 
-  PaymentRequiredResponse, 
-  PaymentPayload, 
+import {
+  PaymentRequiredResponse,
+  PaymentPayload,
   ExactEVMPayload,
   UnifiedPaymentPayload
 } from '../types/x402';
@@ -38,8 +38,8 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
   const currency = options.currency || 'USDC';
   const decimals = options.decimals !== undefined ? options.decimals : 6;
 
-  const verifier = new PayNodeVerifier({ 
-    rpcUrls, 
+  const verifier = new PayNodeVerifier({
+    rpcUrls,
     chainId,
     contractAddress,
     store: options.store
@@ -47,24 +47,24 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
   let rawAmount: bigint;
   try {
-      rawAmount = parseUnits(options.price, decimals);
+    rawAmount = parseUnits(options.price, decimals);
   } catch (e) {
-      // Robust fallback for non-standard number strings (avoiding floating point math)
-      const parts = options.price.split('.');
-      const integerPart = parts[0] || '0';
-      let fractionPart = parts[1] || '0';
-      fractionPart = fractionPart.slice(0, decimals).padEnd(decimals, '0');
-      rawAmount = BigInt(integerPart + fractionPart);
+    // Robust fallback for non-standard number strings (avoiding floating point math)
+    const parts = options.price.split('.');
+    const integerPart = parts[0] || '0';
+    let fractionPart = parts[1] || '0';
+    fractionPart = fractionPart.slice(0, decimals).padEnd(decimals, '0');
+    rawAmount = BigInt(integerPart + fractionPart);
   }
 
-  const defaultOrderIdGen = (req: any) => `agent_js_${Date.now()}`;
+  const defaultOrderIdGen = (req: any) => `pn_sdk_${Date.now()}`;
 
   return async (req: Request | any, res: Response | any, next: NextFunction) => {
     // ... rest of the logic
     const getHeader = (name: string): string | null => {
-        if (req.header && typeof req.header === 'function') return req.header(name);
-        if (req.headers) return req.headers[name.toLowerCase()] || req.headers[name];
-        return null;
+      if (req.header && typeof req.header === 'function') return req.header(name);
+      if (req.headers) return req.headers[name.toLowerCase()] || req.headers[name];
+      return null;
     };
 
     const v2PayloadHeader = getHeader('PAYMENT-SIGNATURE') || getHeader('X-402-Payload');
@@ -79,22 +79,22 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
     if (v2PayloadHeader) {
       try {
         const parsed = JSON.parse(Buffer.from(v2PayloadHeader, 'base64').toString());
-        
+
         if (parsed.x402Version === 2 && parsed.accepted) {
           // Official X402 V2 format - convert to internal format
-          const internalOrderId = parsed._paynode?.orderId 
-                               || orderId 
-                               || `auto_${Date.now()}`;
-          
+          const internalOrderId = parsed._paynode?.orderId
+            || orderId
+            || `auto_${Date.now()}`;
+
           let inferredType: "onchain" | "eip3009" = "onchain";
           if (parsed.payload?.signature || parsed.payload?.authorization) {
             inferredType = "eip3009";
           } else if (parsed.payload?.txHash) {
             inferredType = "onchain";
           }
-          
+
           unifiedPayload = {
-            version: "2.2.1",
+            version: "2.2.2",
             type: parsed._paynode?.type || inferredType,
             orderId: internalOrderId,
             router: parsed.accepted?.router,
@@ -136,7 +136,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           payer: result.payer || ""
         };
         const b64Response = Buffer.from(JSON.stringify(settleResponse)).toString('base64');
-        
+
         if (res.set) {
           res.set('PAYMENT-RESPONSE', b64Response);
           res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility
@@ -153,7 +153,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           network: `eip155:${chainId}`
         };
         const b64Response = Buffer.from(JSON.stringify(settleResponse)).toString('base64');
-        
+
         if (res.set) {
           res.set('PAYMENT-RESPONSE', b64Response);
           res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility

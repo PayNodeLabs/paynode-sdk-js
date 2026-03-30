@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PayNodeException, ErrorCode } from './errors';
-import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI } from './constants';
+import { BASE_RPC_URLS, ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT, PAYNODE_ROUTER_ABI, SDK_VERSION } from './constants';
 import { 
   PaymentRequiredResponse, 
   PaymentPayload,
@@ -85,11 +85,19 @@ export class PayNodeAgentClient {
   async requestGate(url: string, options: RequestOptions = {}): Promise<Response> {
     const fetchOptions: RequestInit = { ...options };
     
+    const network = await this.provider.getNetwork();
+    const paynodeNetwork = Number(network.chainId) === 8453 ? 'mainnet' : 'testnet';
+
+    fetchOptions.headers = {
+      'X-PayNode-Network': paynodeNetwork,
+      ...fetchOptions.headers
+    };
+
     if (options.json && !fetchOptions.body) {
       fetchOptions.body = JSON.stringify(options.json);
       fetchOptions.headers = {
-        'Content-Type': 'application/json',
-        ...fetchOptions.headers
+        ...fetchOptions.headers,
+        'Content-Type': 'application/json'
       };
     }
 
@@ -159,6 +167,8 @@ export class PayNodeAgentClient {
       throw new PayNodeException(ErrorCode.TransactionFailed, `No compatible payment requirement found for network ${caip2ChainId}`);
     }
 
+    console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type || 'onchain'} on ${requirement.network}`);
+
     // 🛡️ Token Whitelist Check (Case-insensitive)
     const chainTokens = ACCEPTED_TOKENS[chainId]?.map(t => t.toLowerCase());
     if (chainTokens && !chainTokens.includes(requirement.asset.toLowerCase())) {
@@ -203,7 +213,7 @@ export class PayNodeAgentClient {
         },
         payload: authorization,
         _paynode: {
-          version: "2.2.1",
+          version: SDK_VERSION,
           type: 'eip3009',
           orderId: orderId
         }
@@ -247,7 +257,7 @@ export class PayNodeAgentClient {
         },
         payload: { txHash },
         _paynode: {
-          version: "2.2.1",
+          version: SDK_VERSION,
           type: 'onchain',
           orderId: orderId
         }
@@ -259,6 +269,8 @@ export class PayNodeAgentClient {
       ? globalThis.Buffer.from(payloadJson).toString('base64')
       : btoa(payloadJson);
     
+    const paynodeNetwork = chainId === 8453 ? 'mainnet' : 'testnet';
+
     const retryOptions: RequestInit = {
       ...options,
       headers: {
@@ -266,7 +278,8 @@ export class PayNodeAgentClient {
         'Content-Type': 'application/json',
         'PAYMENT-SIGNATURE': b64Payload,
         'X-402-Payload': b64Payload, // Keep for backward compatibility
-        'X-402-Order-Id': orderId
+        'X-402-Order-Id': orderId,
+        'X-PayNode-Network': paynodeNetwork
       }
     };
 
@@ -312,11 +325,13 @@ export class PayNodeAgentClient {
     extra: Record<string, any> = {}
   ): Promise<ExactEVMPayload> {
     const network = await this.provider.getNetwork();
+    const chainId = Number(network.chainId);
+    const defaultName = chainId === 8453 ? "USDC" : "USD Coin";
     
     const domain = {
-      name: extra.name || "USD Coin",
+      name: extra.name || defaultName,
       version: extra.version || "2",
-      chainId: Number(network.chainId),
+      chainId: chainId,
       verifyingContract: tokenAddr
     };
 
