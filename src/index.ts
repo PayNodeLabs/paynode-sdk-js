@@ -5,4 +5,7 @@ export * from './utils/webhook';
 export * from './client';
 export * from './errors';
 export * from './constants';
+export * from './utils/payload';
 export * from './types/x402';
+export { ethers } from 'ethers';
+

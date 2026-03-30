@@ -1,6 +1,6 @@
 {
   "name": "@paynodelabs/sdk-js",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "The official JavaScript/TypeScript SDK for PayNode x402 protocol on Base L2.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +25,7 @@
   "author": "PayNodeLabs",
   "license": "MIT",
   "dependencies": {
-    "ethers": "^6.13.0",
+    "ethers": "^6.16.0",
     "ioredis": "^5.10.1"
   },
   "peerDependencies": {
