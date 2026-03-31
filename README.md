@@ -111,7 +111,10 @@ PayNode uses two distinct versioning schemes:
 | Version Type | Description | Current Value |
 | :--- | :--- | :--- |
 | **Protocol Version** | On-chain contracts & core x402 data schema. | `1.4.0` |
-| **SDK/Product Version** | Software package version (npm/SemVer). | `2.2.2` |
+| **SDK/Product Version** | Software package version (npm/SemVer). | `2.2.4` |
+
+> [!IMPORTANT]
+> **Production Hardening (v2.2.4+)**: This version includes critical fixes for Base Mainnet transaction stability (Inconsistent Quorum/Code 9) by enforcing `staticNetwork` and optimized provider settings. It is the minimum recommended version for mainnet deployment.
 
 > [!NOTE]
 > Protocol Version changes imply breaking changes in verification or contract interfaces. SDK Version changes may include features, fixes, or performance improvements without altering protocol logic.
