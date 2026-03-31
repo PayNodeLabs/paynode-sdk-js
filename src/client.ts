@@ -36,13 +36,13 @@ export class PayNodeAgentClient {
     this.maxRetries = maxRetries;
     
     const configs = this.rpcUrls.map((url, index) => ({
-      provider: new ethers.JsonRpcProvider(url),
+      provider: new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true }),
       priority: index,
       weight: 1,
       stallTimeout: 3000
     }));
 
-    this.provider = new ethers.FallbackProvider(configs);
+    this.provider = new ethers.FallbackProvider(configs, undefined, { quorum: 1 });
     this.wallet = new ethers.Wallet(privateKey, this.provider);
   }
 
