@@ -8,4 +8,6 @@ export * from './constants';
 export * from './utils/payload';
 export * from './types/x402';
 export { ethers } from 'ethers';
+export * from './merchant';
+export * from './merchant/types';
 

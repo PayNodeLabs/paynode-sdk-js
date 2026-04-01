@@ -33,6 +33,32 @@ async function main() {
 main();
 ```
 
+### Market Merchant (Seller)
+
+Starting from **v2.3.0**, PayNode SDK provides a unified merchant gateway for seamless [PayNode Market](https://mk.paynode.dev) integration.
+
+```typescript
+import { PayNodeMerchant } from "@paynodelabs/sdk-js";
+import express from "express";
+
+const app = express();
+const merchant = new PayNodeMerchant({
+  sharedSecret: "YOUR_MARKET_SECRET" // From Market Hub
+});
+
+
+// 1. Unified Middleware (Strict Market Auth + Discovery + Body Unwrap)
+app.post("/my-api", merchant.middleware({
+    manifest: { slug: "my-tool", price_per_call: "0.1" },
+    strict: true // Enforce Market Proxy (Ensures you & Market get fees)
+  }), (req, res) => {
+    // req.body is automatically unwrapped from market data structure.
+    // Payment details available in req.paynode.txHash
+    res.json({ data: "premium_content" });
+  }
+);
+```
+
 ### Key Features (v2.2.1)
 
 - **Zero-Wait Checkout**: API response speed drops from 5 seconds to **under 50ms** by using local signatures instead of waiting for on-chain inclusion.
