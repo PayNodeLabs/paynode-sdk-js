@@ -34,9 +34,9 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 
 ### For Merchant Code (Seller-Side)
 - **Primary Class:** `PayNodeMerchant`.
-- **Unified Middleware:** `merchant.middleware({ manifest, strict })`.
+- **Unified Middleware:** `merchant.middleware({ manifest })`.
 - **Handshake Logic:** The middleware handles all aspects of identifying the order, generating the challenge, and verifying the signature.
-- **Manifest:** Must include `slug`, `price`, and `asset`.
+- **Manifest:** Must include `slug`, `name`, `description`, and `price_per_call`.
 - **Response Format:** The middleware unwraps the payload; the merchant just responds with raw data.
 
 ## 🧪 Best Practices

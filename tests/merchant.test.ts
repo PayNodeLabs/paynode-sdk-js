@@ -10,7 +10,7 @@ describe('PayNodeMerchant Unit Tests', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        merchant = new PayNodeMerchant({ sharedSecret, marketUrl });
+        merchant = new PayNodeMerchant({ sharedSecret, marketUrl, quiet: true });
     });
 
     describe('middleware()', () => {
@@ -64,7 +64,7 @@ describe('PayNodeMerchant Unit Tests', () => {
         });
 
         test('✅ should unwrap body for valid proxy requests', async () => {
-            const middleware = merchant.middleware({ strict: true });
+            const middleware = merchant.middleware();
 
             req.header.mockImplementation((name: string) => {
                 if (name === 'X-PayNode-Signature') return 'valid-sig';

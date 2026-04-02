@@ -85,7 +85,7 @@ describe('PayNodeAgentClient Unit Tests', () => {
         mockWallet.provider = mockProvider;
         mockContract.allowance.mockResolvedValue(BigInt(2000000));
         
-        client = new PayNodeAgentClient(privateKey);
+        client = new PayNodeAgentClient(privateKey, { quiet: true });
         (global.fetch as jest.Mock).mockReset();
     });
 

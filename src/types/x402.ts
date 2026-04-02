@@ -6,6 +6,19 @@ export interface ResourceInfo {
   mimeType?: string;
 }
 
+/**
+ * PaymentRequirements describes a single payment option returned
+ * in the `accepts[]` array of a 402 challenge.
+ *
+ * NOTE: The `orderId` (legacy) is DEPRECATED. All SDKs MUST read
+ * and write the request ID exclusively via the
+ * `X-402-Order-Id` HTTP header. This field exists only for
+ * backward compatibility with paynode-js <= 2.2.x and must
+ * not be used by new implementations.
+ *
+ * Protocol: x402 v2
+ * Canonical orderId transport: X-402-Order-Id header
+ */
 export interface PaymentRequirements {
   scheme: string;
   type?: "onchain" | "eip3009";
@@ -14,6 +27,7 @@ export interface PaymentRequirements {
   asset: string;
   payTo: string;
   router?: string;
+  /** @deprecated Use X-402-Order-Id header exclusively. Legacy alias only. */
   orderId?: string;
   maxTimeoutSeconds: number;
   extra?: Record<string, any>;
@@ -40,7 +54,7 @@ export interface PaymentPayload {
   payload: Record<string, any> | ExactEVMPayload | { txHash: string };
   extensions?: Record<string, any>;
   _paynode?: {
-    version: string;
+    sdkVersion: string;
     type: "onchain" | "eip3009";
     orderId: string;
   };
@@ -74,7 +88,7 @@ export interface VerifyResponse {
 }
 
 export interface UnifiedPaymentPayload {
-  version: "2.3.0";
+  x402Version: X402Version;
   type: "onchain" | "eip3009";
   orderId: string;
   router?: string;
@@ -83,6 +97,9 @@ export interface UnifiedPaymentPayload {
     signature?: string;
     authorization?: any;
   } | ExactEVMPayload;
+  _paynode?: {
+    sdkVersion: string;
+  };
 }
 
 export interface SupportedKind {

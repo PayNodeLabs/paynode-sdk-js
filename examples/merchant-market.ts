@@ -38,10 +38,9 @@ const apiManifest = {
 };
 
 // Use the Unified Middleware
-// Setting strict: true ensures only PayNode Market can call this API (enforces fee collection)
+// Market Proxy routing is now handled automatically
 app.post('/api/draw', merchant.middleware({
-  manifest: apiManifest,
-  strict: true 
+  manifest: apiManifest
 }), (req: any, res) => {
   // 🚀 TRANSPARENCY: req.body is already unwrapped.
   // No need to handle rec.body.payload or signatures manually.

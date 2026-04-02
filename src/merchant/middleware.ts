@@ -8,10 +8,12 @@ import { PayNodeMiddlewareOptions } from '../middleware/x402';
  * Handles: 
  * 1. Market Proxy (Strict HMAC Signature + Body Unwrapping)
  * 2. Discovery Probes (Auto-respond with API Manifest)
- * 3. Direct Agent Access (Optional X402 Fallback)
+ * 
+ * Note: Standalone direct X402 payment flow should be handled 
+ * via x402Gate component.
  */
 export const createMerchantMiddleware = (config: MerchantConfig, options: MerchantMiddlewareOptions & PayNodeMiddlewareOptions) => {
-  const { manifest, strict = true } = options;
+  const { manifest } = options;
 
   return async (req: Request | any, res: Response | any, next: NextFunction) => {
     // 1. Check for Market Proxy Headers
@@ -30,7 +32,7 @@ export const createMerchantMiddleware = (config: MerchantConfig, options: Mercha
       });
 
       if (!isValid) {
-        console.error(`[PayNode-SDK] Invalid Market Proxy Signature for request ${requestId}`);
+        if (!config.quiet) console.error(`[PayNode-SDK] Invalid Market Proxy Signature for request ${requestId}`);
         return res.status(401).json({ error: 'unauthorized', message: 'PayNode Market Signature verification failed.' });
       }
 
@@ -38,7 +40,7 @@ export const createMerchantMiddleware = (config: MerchantConfig, options: Mercha
       if (isDiscovery) {
         return res.status(200).json({
           status: 'DISCOVERED',
-          version: '2.0.0',
+          x402Version: 2,
           manifest: manifest || {},
           last_synced: new Date().toISOString()
         });

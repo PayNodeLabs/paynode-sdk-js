@@ -21,8 +21,8 @@ export class PayNodeMerchant {
    * This ensures the market shows the correct price and input schema.
    */
   async sync(manifest: ApiManifest): Promise<boolean> {
-    console.log(`[PayNode-SDK] Syncing API manifest for ${manifest.slug} to ${this.config.marketUrl}`);
-
+    if (!this.config.quiet) console.log(`[PayNode-SDK] Syncing API manifest for ${manifest.slug} to ${this.config.marketUrl}`);
+ 
     try {
       const response = await fetch(`${this.config.marketUrl}/api/v1/merchant/apis`, {
         method: 'POST',
@@ -31,19 +31,19 @@ export class PayNodeMerchant {
           ...manifest,
           gateway_url: manifest.slug
         })
-
+ 
       });
-
+ 
       const result = await response.json();
       if (response.ok && result.success) {
-        console.log(`[PayNode-SDK] Successfully synced ${manifest.slug}. Status: ${result.api_id}`);
+        if (!this.config.quiet) console.log(`[PayNode-SDK] Successfully synced ${manifest.slug}. Status: ${result.api_id}`);
         return true;
       } else {
-        console.warn(`[PayNode-SDK] Sync failed for ${manifest.slug}: ${result.error || response.statusText}`);
+        if (!this.config.quiet) console.warn(`[PayNode-SDK] Sync failed for ${manifest.slug}: ${result.error || response.statusText}`);
         return false;
       }
     } catch (err: any) {
-      console.error(`[PayNode-SDK] Network error during sync for ${manifest.slug}:`, err.message);
+      if (!this.config.quiet) console.error(`[PayNode-SDK] Network error during sync for ${manifest.slug}:`, err.message);
       return false;
     }
   }
@@ -76,7 +76,7 @@ export class PayNodeMerchant {
 
     const signature = getHeader('X-PayNode-Signature');
     const timestamp = getHeader('X-PayNode-Timestamp');
-    const requestId = getHeader('X-PayNode-Request-Id') || getHeader('X-402-Order-Id');
+    const requestId = getHeader('X-PayNode-Request-Id') || getHeader('X-402-Order-Id') || getHeader('PAYMENT-SIGNATURE'); // Try fallback
 
     const isValid = verifyMarketSignature({
       signature,

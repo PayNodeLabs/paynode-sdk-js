@@ -3,6 +3,7 @@ import { PaymentRequirements, X402Version } from '../types/x402';
 export interface MerchantConfig {
   sharedSecret: string;
   marketUrl?: string; // Default: https://mk.paynode.dev
+  quiet?: boolean;
 }
 
 export interface ApiManifest {
@@ -27,5 +28,4 @@ export interface PayNodeRequestContext {
 
 export interface MerchantMiddlewareOptions {
   manifest?: Partial<ApiManifest>;
-  strict?: boolean; // If true, reject requests without valid market signature
 }

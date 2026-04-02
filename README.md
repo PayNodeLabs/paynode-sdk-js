@@ -1,5 +1,8 @@
 # PayNode Master SDK (JS/TS)
 
+> [!NOTE]
+> Compatibility policy & legacy header aliases are documented in [COMPATIBILITY.md](./COMPATIBILITY.md).
+
 [![Official Documentation](https://img.shields.io/badge/Docs-docs.paynode.dev-00ff88?style=for-the-badge&logo=readthedocs)](https://docs.paynode.dev)
 [![NPM Version](https://img.shields.io/npm/v/@paynodelabs/sdk-js.svg?style=for-the-badge)](https://www.npmjs.com/package/@paynodelabs/sdk-js)
 [![License](https://img.shields.io/github/license/paynodeprotocol/paynode?style=for-the-badge)](LICENSE)
@@ -72,7 +75,7 @@ app.post("/api/v1/tools", merchant.middleware({
       price_per_call: "0.05",
       currency: "USDC"
     },
-    strict: true // Enforces Market Proxy routing
+    price: "0.05"  // Also set price directly — manifest.price_per_call is for Market Hub sync only
   }), (req, res) => {
     // req.body is automatically unwrapped for valid Market Proxy requests
     res.json({ result: "Data for " + req.body.query });
@@ -116,10 +119,10 @@ As the lead SDK, this package drives the protocol forward. Current initiatives:
 | Component | Current Version |
 | :--- | :--- |
 | **Protocol (x402)** | `v2` |
-| **SDK Implementation** | `v2.3.0` |
+| **SDK Implementation** | `v2.4.0` |
 
 > [!IMPORTANT]
-> Protocol and SDK package versioning are not the same thing. Treat the protocol as `x402 v2`, and treat `2.3.0` as the current JS SDK implementation version.
+> Protocol and SDK package versioning are not the same thing. Treat the protocol as `x402 v2`, and treat `2.4.0` as the current JS SDK implementation version.
 
 ---
 

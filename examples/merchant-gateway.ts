@@ -29,8 +29,7 @@ const gatewayMiddleware = merchant.middleware({
     price_per_call: "0.05",
     currency: "USDC",
     network: "testnet" // Base Sepolia is testnet
-  },
-  strict: true // Enforce Market Proxy (Ensures payment verification)
+  }
 });
 
 // Register a protected endpoint
