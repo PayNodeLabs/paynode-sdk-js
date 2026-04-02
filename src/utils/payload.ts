@@ -30,7 +30,7 @@ export class X402PayloadHelper {
         }
 
         return {
-          version: "2.2.2",
+          version: "2.3.0",
           type: parsed._paynode?.type || inferredType,
           orderId: parsed._paynode?.orderId || fallbackOrderId || "",
           router: parsed.accepted?.router || parsed.router,

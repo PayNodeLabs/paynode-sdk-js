@@ -74,7 +74,7 @@ export interface VerifyResponse {
 }
 
 export interface UnifiedPaymentPayload {
-  version: "2.2.2";
+  version: "2.3.0";
   type: "onchain" | "eip3009";
   orderId: string;
   router?: string;

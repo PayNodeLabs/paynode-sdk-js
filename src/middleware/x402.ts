@@ -94,7 +94,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           }
 
           unifiedPayload = {
-            version: "2.2.2",
+            version: "2.3.0",
             type: parsed._paynode?.type || inferredType,
             orderId: internalOrderId,
             router: parsed.accepted?.router,
