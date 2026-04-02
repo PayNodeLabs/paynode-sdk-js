@@ -12,6 +12,13 @@ export interface RequestOptions extends RequestInit {
   json?: any;
 }
 
+export interface AgentClientOptions {
+  rpcUrls?: string | string[];
+  maxRetries?: number;
+  quiet?: boolean;
+}
+
+
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 export class PayNodeAgentClient {
@@ -19,6 +26,7 @@ export class PayNodeAgentClient {
   private provider: ethers.FallbackProvider;
   private rpcUrls: string[];
   private maxRetries: number;
+  private options: AgentClientOptions;
   private nonceLock: Promise<void> = Promise.resolve();
 
   private ERC20_ABI = [
@@ -31,9 +39,18 @@ export class PayNodeAgentClient {
 
   private ROUTER_ABI = PAYNODE_ROUTER_ABI;
 
-  constructor(privateKey: string, rpcUrls: string | string[] = BASE_RPC_URLS, maxRetries: number = 3) {
-    this.rpcUrls = Array.isArray(rpcUrls) ? rpcUrls : [rpcUrls];
-    this.maxRetries = maxRetries;
+  constructor(privateKey: string, rpcUrls?: string | string[], maxRetries?: number);
+  constructor(privateKey: string, options?: AgentClientOptions);
+  constructor(privateKey: string, arg2?: string | string[] | AgentClientOptions, arg3?: number) {
+    if (typeof arg2 === 'object' && !Array.isArray(arg2)) {
+      this.options = { ...arg2 };
+      this.rpcUrls = Array.isArray(this.options.rpcUrls) ? this.options.rpcUrls : (this.options.rpcUrls ? [this.options.rpcUrls] : BASE_RPC_URLS);
+      this.maxRetries = this.options.maxRetries ?? 3;
+    } else {
+      this.rpcUrls = Array.isArray(arg2) ? arg2 : (arg2 ? [arg2] : BASE_RPC_URLS);
+      this.maxRetries = arg3 ?? 3;
+      this.options = { rpcUrls: this.rpcUrls, maxRetries: this.maxRetries };
+    }
     
     const configs = this.rpcUrls.map((url, index) => ({
       provider: new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true }),
@@ -63,7 +80,7 @@ export class PayNodeAgentClient {
 
         if (attempt < this.maxRetries - 1) {
           const backoffMs = Math.pow(2, attempt) * 1000;
-          console.warn(`⚠️ [PayNode-JS] ${response.status} received. Retrying in ${backoffMs}ms...`);
+          if (!this.options.quiet) console.warn(`⚠️ [PayNode-JS] ${response.status} received. Retrying in ${backoffMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
@@ -73,7 +90,7 @@ export class PayNodeAgentClient {
         lastError = error;
         if (attempt < this.maxRetries - 1) {
           const backoffMs = Math.pow(2, attempt) * 1000;
-          console.warn(`⚠️ [PayNode-JS] Request failed: ${error.message}. Retrying in ${backoffMs}ms...`);
+          if (!this.options.quiet) console.warn(`⚠️ [PayNode-JS] Request failed: ${error.message}. Retrying in ${backoffMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
       }
@@ -105,7 +122,7 @@ export class PayNodeAgentClient {
       let response = await this._fetchWithRetry(url, fetchOptions);
 
       if (response.status === 402) {
-        console.log(`💡 [PayNode-JS] 402 Payment Required detected. Analyzing protocol version...`);
+        if (!this.options.quiet) console.log(`💡 [PayNode-JS] 402 Payment Required detected. Analyzing protocol version...`);
         
         const contentType = response.headers.get('content-type');
         const b64Required = response.headers.get('PAYMENT-REQUIRED') || response.headers.get('X-402-Required');
@@ -121,7 +138,7 @@ export class PayNodeAgentClient {
               : atob(b64Required);
             headerBody = JSON.parse(decoded);
           } catch (e) {
-            console.debug('⚠️ [PayNode-JS] Failed to parse PAYMENT-REQUIRED header:', e);
+            if (!this.options.quiet) console.debug('⚠️ [PayNode-JS] Failed to parse PAYMENT-REQUIRED header:', e);
           }
         }
 
@@ -137,7 +154,7 @@ export class PayNodeAgentClient {
         }
 
         if (body && body.x402Version === 2) {
-            console.log(`🚀 [PayNode-JS] x402 v2 detected. Handling autonomous payment...`);
+            if (!this.options.quiet) console.log(`🚀 [PayNode-JS] x402 v2 detected. Handling autonomous payment...`);
             if (orderId && !body.orderId) body.orderId = orderId;
             return await this._handleX402V2(url, fetchOptions, body as PaymentRequiredResponse);
         }
@@ -148,7 +165,7 @@ export class PayNodeAgentClient {
       return response;
     } catch (error: any) {
       if (error instanceof PayNodeException || error?.name === "PayNodeException") throw error;
-      console.error(`❌ [PayNode-JS] Critical error in requestGate:`, error);
+      if (!this.options.quiet) console.error(`❌ [PayNode-JS] Critical error in requestGate:`, error);
       throw new PayNodeException(ErrorCode.RpcError, undefined, error);
     }
   }
@@ -167,7 +184,7 @@ export class PayNodeAgentClient {
       throw new PayNodeException(ErrorCode.TransactionFailed, `No compatible payment requirement found for network ${caip2ChainId}`);
     }
 
-    console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type || 'onchain'} on ${requirement.network}`);
+    if (!this.options.quiet) console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type || 'onchain'} on ${requirement.network}`);
 
     // 🛡️ Token Whitelist Check (Case-insensitive)
     const chainTokens = ACCEPTED_TOKENS[chainId]?.map(t => t.toLowerCase());
@@ -204,6 +221,7 @@ export class PayNodeAgentClient {
         resource: requirements.resource,
         accepted: {
           scheme: requirement.scheme,
+          type: 'eip3009',
           network: requirement.network,
           amount: requirement.amount,
           asset: requirement.asset,
@@ -213,7 +231,7 @@ export class PayNodeAgentClient {
         },
         payload: authorization,
         _paynode: {
-          version: SDK_VERSION,
+          sdkVersion: SDK_VERSION,
           type: 'eip3009',
           orderId: orderId
         }
@@ -225,7 +243,7 @@ export class PayNodeAgentClient {
         throw new PayNodeException(ErrorCode.InternalError, "On-chain payment required but no router address provided.");
       }
 
-      console.log(`⚡ [PayNode-JS] Executing on-chain payment to ${requirement.payTo}...`);
+      if (!this.options.quiet) console.log(`⚡ [PayNode-JS] Executing on-chain payment to ${requirement.payTo}...`);
       const amount = BigInt(requirement.amount);
       const tokenContract = new ethers.Contract(requirement.asset, this.ERC20_ABI, this.wallet);
       const allowance = await tokenContract.allowance(this.wallet.address, routerAddr);
@@ -235,7 +253,7 @@ export class PayNodeAgentClient {
         try {
           txHash = await this.pay(routerAddr, requirement.asset, requirement.payTo, amount, orderId);
         } catch (e) {
-          console.warn(`⚠️ [PayNode-JS] Direct pay failed (possibly allowance race), falling back to permit:`, e);
+          if (!this.options.quiet) console.warn(`⚠️ [PayNode-JS] Direct pay failed (possibly allowance race), falling back to permit:`, e);
           txHash = await this.payWithPermit(routerAddr, requirement.asset, requirement.payTo, amount, orderId, requirement.extra?.version || '2');
         }
       } else {
@@ -247,6 +265,7 @@ export class PayNodeAgentClient {
         resource: requirements.resource,
         accepted: {
           scheme: requirement.scheme,
+          type: 'onchain',
           network: requirement.network,
           amount: requirement.amount,
           asset: requirement.asset,
@@ -257,7 +276,7 @@ export class PayNodeAgentClient {
         },
         payload: { txHash },
         _paynode: {
-          version: SDK_VERSION,
+          sdkVersion: SDK_VERSION,
           type: 'onchain',
           orderId: orderId
         }
@@ -303,12 +322,12 @@ export class PayNodeAgentClient {
         }
         const settleData = JSON.parse(decoded);
         if (settleData.success) {
-          console.log(`✅ [PayNode-JS] Settlement confirmed: ${settleData.transaction}`);
+          if (!this.options.quiet) console.log(`✅ [PayNode-JS] Settlement confirmed: ${settleData.transaction}`);
         } else {
-          console.warn(`⚠️ [PayNode-JS] Settlement failed: ${settleData.errorReason || 'Unknown error'}`);
+          if (!this.options.quiet) console.warn(`⚠️ [PayNode-JS] Settlement failed: ${settleData.errorReason || 'Unknown error'}`);
         }
       } catch (e) {
-        console.warn(`⚠️ [PayNode-JS] Failed to parse settlement response:`, e);
+        if (!this.options.quiet) console.warn(`⚠️ [PayNode-JS] Failed to parse settlement response:`, e);
       }
     }
 

@@ -1,4 +1,5 @@
 import { ethers, JsonRpcProvider, FallbackProvider, Contract } from 'ethers';
+import crypto from 'crypto';
 import { ErrorCode, PayNodeException } from '../errors';
 import { IdempotencyStore, MemoryIdempotencyStore } from './idempotency';
 import { ACCEPTED_TOKENS, MIN_PAYMENT_AMOUNT } from '../constants';
@@ -138,10 +139,19 @@ export class PayNodeVerifier {
             if (parsed && parsed.name === 'PaymentReceived') {
               const { merchant, token, amount, orderId, payer } = parsed.args;
 
-              const isMerchantMatch = merchant.toLowerCase() === expected.merchantAddress.toLowerCase();
-              const isTokenMatch = token.toLowerCase() === expected.tokenAddress.toLowerCase();
+              const merchantBuf = Buffer.from(merchant.toLowerCase().replace('0x', ''), 'hex');
+              const expectedMerchantBuf = Buffer.from(expected.merchantAddress.toLowerCase().replace('0x', ''), 'hex');
+              const isMerchantMatch = merchantBuf.length === expectedMerchantBuf.length && crypto.timingSafeEqual(merchantBuf, expectedMerchantBuf);
+
+              const tokenBuf = Buffer.from(token.toLowerCase().replace('0x', ''), 'hex');
+              const expectedTokenBuf = Buffer.from(expected.tokenAddress.toLowerCase().replace('0x', ''), 'hex');
+              const isTokenMatch = tokenBuf.length === expectedTokenBuf.length && crypto.timingSafeEqual(tokenBuf, expectedTokenBuf);
+
               const isAmountMatch = BigInt(amount) >= BigInt(expected.amount);
-              const isOrderMatch = orderId === targetOrderId;
+
+              const orderIdBuf = Buffer.from(orderId.replace('0x', ''), 'hex');
+              const targetOrderIdBuf = Buffer.from(targetOrderId.replace('0x', ''), 'hex');
+              const isOrderMatch = orderIdBuf.length === targetOrderIdBuf.length && crypto.timingSafeEqual(orderIdBuf, targetOrderIdBuf);
 
               if (isMerchantMatch && isTokenMatch && isAmountMatch) {
                 if (isOrderMatch) {
@@ -213,7 +223,9 @@ export class PayNodeVerifier {
       const payloadValue = BigInt(value);
 
       // 2. 基础字段与金额校验 (防粉尘攻击)
-      if (to.toLowerCase() !== expected.to.toLowerCase()) {
+      const toBuf = Buffer.from(to.toLowerCase().replace('0x', ''), 'hex');
+      const expectedToBuf = Buffer.from(expected.to.toLowerCase().replace('0x', ''), 'hex');
+      if (toBuf.length !== expectedToBuf.length || !crypto.timingSafeEqual(toBuf, expectedToBuf)) {
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Recipient mismatch") };
       }
       if (payloadValue < expectedValue) {
@@ -250,7 +262,10 @@ export class PayNodeVerifier {
       };
 
       const recoveredAddress = ethers.verifyTypedData(domain, types, authorization, signature);
-      if (recoveredAddress.toLowerCase() !== from.toLowerCase()) {
+      const recoveredBuf = Buffer.from(recoveredAddress.toLowerCase().replace('0x', ''), 'hex');
+      const fromBuf = Buffer.from(from.toLowerCase().replace('0x', ''), 'hex');
+      
+      if (recoveredBuf.length !== fromBuf.length || !crypto.timingSafeEqual(recoveredBuf, fromBuf)) {
         return { isValid: false, error: new PayNodeException(ErrorCode.InvalidReceipt, "Invalid signature: recovered address mismatch") };
       }
 

@@ -1,7 +1,7 @@
-# 🤖 PayNode JS/TS SDK - AI Developer Instructions (v2.2.0)
+# 🤖 PayNode Master SDK (JS/TS) - AI Agent System Prompt (v2.3.0)
 
 > **ATTENTION LLMs / AI AGENTS:**
-> This is your definitive system prompt for using the PayNode JS SDK. Read carefully before generating code.
+> This is your definitive system prompt for interacting with the **PayNode Master SDK**. As the reference implementation for the x402 protocol, this codebase defines the logic that all other language SDKs must follow.
 
 ## 🔗 Official Knowledge Base
 If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth at:
@@ -9,70 +9,49 @@ If you have web-browsing capabilities, ALWAYS refer to the absolute ground truth
 
 ## 🧠 Core Directives
 
-1. **Protocol:** PayNode is a stateless, non-custodial x402 gateway on **Base L2**.
-2. **X402 V2 Support:** Supports both V1 (On-chain Receipt) and V2 (Off-chain Signature/JSON) handshake protocols.
-3. **V2 Performance:** Sub-second settlement (<50ms) via EIP-3009 offline signing support.
-4. **V2 Security:** Advanced double-spend protection (L1 memory cache + L2 RPC state) and empty-wallet proofing.
-5. **Currency:** USDC (6 decimals). Always use `ethers.parseUnits(amount, 6)`.
-6. **Smart Contract:**
-   - Base Mainnet (8453): `0x4A73696ccF76E7381b044cB95127B3784369Ed63`
-   - Base Sepolia (84532): `0x24cD8b68aaC209217ff5a6ef1Bf55a59f2c8Ca6F`
+1. **Master Status:** This JS/TS SDK is the **Source of Truth** for the x402 V2 protocol.
+2. **Protocol:** PayNode is a stateless, non-custodial x402 gateway on **Base L2**.
+3. **X402 V2 Handshake:** Supports the modern JSON-based negotiation protocol.
+4. **V2 Performance:** Sub-50ms settlement via **EIP-3009** off-chain signatures (preferred over on-chain receipts).
+5. **V2 Security:** High-speed `IdempotencyStore` (L1) and RPC `authorizationState` (L2) verification.
+6. **Currency:** USDC (6 decimals). Use `ethers.parseUnits(amount, 6)`.
+7. **Unified Middleware:** Use `PayNodeMerchant` for all server-side implementations.
 
 ## 🏗️ File Structure
-- `src/client.ts`: `PayNodeAgentClient` — autonomous 402 loop.
-- `src/middleware/`: `x402Gate` — Express/Koa merchant protection.
-- `src/constants.ts`: Protocol constants (sync via `meta/scripts/sync-config.py` in the aggregate workspace).
-- `src/errors/`: `PayNodeException` + standard error codes.
-- `src/types/`: TypeScript interfaces for protocol objects.
-- `src/utils/`: Signature helpers, RPC failover, gas estimation.
-- `examples/`: Reference implementations for Agent and Merchant flows.
+- `src/client.ts`: `PayNodeAgentClient` — The autonomous 402 loop for agent payers.
+- `src/merchant/`: Core merchant logic and `PayNodeMerchant` controller.
+- `src/middleware/`: Unified Express middleware for seamless integration.
+- `src/constants.ts`: Protocol constants, RPC URLs, and ABI definitions.
+- `src/types/x402.ts`: Protocol data schemas for the V2 handshake.
 
 ## 🛠️ Implementation Rules (TypeScript)
 
 ### For Agent Code (Payer-Side)
-- **Class:** `PayNodeAgentClient`.
-- **Method:** `requestGate(url, options)`.
-- **Behavior:** Automatically intercepts `402` status, executes on-chain payment (USDC), and retries with the `x-paynode-receipt` header.
-- **Gas Hardening:** The SDK implements infinite approval and gas boosting internally to ensure Mainnet reliability.
-- **RPC Failover:** Pass an array of RPC URLs for redundancy.
+- **Primary Class:** `PayNodeAgentClient`.
+- **Primary Method:** `requestGate(url, options)`.
+- **Behavior:** Automatically detects 402 status, chooses the best settlement path (EIP-3009 or On-chain), and retries with appropriate signature headers (`PAYMENT-SIGNATURE`).
+- **Gas Hardening:** SDK handles `permit` and gas boosting (1.2x) internally.
 
-### For Merchant Code (Server-Side)
-- **Middleware:** `x402Gate(config)`.
-- **Handshake Headers (X-402-* as per v2/v2.2.0 protocol):**
-  - `X-402-Contract`: Router address
-  - `X-402-Merchant`: Receiver wallet
-  - `X-402-Amount`: Required amount (smallest unit, min 1000)
-  - `X-402-Token-Address`: ERC20 (USDC)
-  - `X-402-Chain-Id`: Network ID (8453 or 84532)
-  - `X-402-Order-Id`: Tracking ID
-- **200 Verification Response:** Use the nested `payment_info` structure:
-  ```json
-  {
-    "status": "success",
-    "payment_info": { "receipt": "0x...", "order_id": "... " }
-  }
-  ```
+### For Merchant Code (Seller-Side)
+- **Primary Class:** `PayNodeMerchant`.
+- **Unified Middleware:** `merchant.middleware({ manifest })`.
+- **Handshake Logic:** The middleware handles all aspects of identifying the order, generating the challenge, and verifying the signature.
+- **Manifest:** Must include `slug`, `name`, `description`, and `price_per_call`.
+- **Response Format:** The middleware unwraps the payload; the merchant just responds with raw data.
 
-## 🧪 Test & Build Patterns
-- **Testing:** Jest with ts-jest. Test files in `tests/` (`*.test.ts`).
-- **Command:** `npm test`
-- **Build:** `npm run build` (emits CommonJS + declarations to `dist/`).
-- **TypeScript:** strict mode, ES2022 target, `forceConsistentCasingInFileNames`.
-
-## 🚀 Run the Demo
-Try the full lifecycle in `packages/sdk-js/examples/`.
-1. Copy `.env.example` to `.env`.
-2. Start `express-server.ts` and `agent-client.ts`.
+## 🧪 Best Practices
+- **EIP-3009 First:** Always prefer `eip3009` in the handshake for its zero-latency user experience.
+- **Stateless Verification:** Do not rely on persistent DBs for payment status; use the SDK's verification logic against the blockchain/RPC state.
+- **Error Handling:** Catch `PayNodeException` to handle `InsufficientFunds` or `TransactionFailed` scenarios gracefully.
 
 ## 🚫 TypeScript/Ethers.js Anti-Patterns
-- **No `as any`:** Never suppress type errors. Fix the types.
-- **No Float Amounts:** Always use `ethers.parseUnits(amount, 6)` for USDC (never parseFloat).
-- **No Hardcoded Gas:** Don't set fixed gasPrice. Use the SDK's 1.2x multiplier.
-- **No Frontend Keys:** Never expose private keys in client-side code. Agents run server-side or in TEEs.
-- **No Missing Await:** All Ethers.js calls are async. Always `await` contract interactions.
-- **Header Standard:** Always use lower-case `x-paynode-*` headers as per v1.4 spec.
+- **No Manual Headers:** Do not manually construct `X-402-*` headers if using the SDK; let the `PayNodeAgentClient` handle the handshake.
+- **No Hardcoded RPCs:** Use the default `BASE_RPC_URLS` or provide a fallback array.
+- **Network Awareness:** Always check if you are on `8453` (Mainnet) or `84532` (Sepolia).
 
-## ⚠️ System Boundaries
-- Load `PRIVATE_KEY` from `.env`. Never hardcode.
-- Verify wallet has **Base ETH** for gas and **USDC** for value transfer.
-- Protocol minimum payment is 1000 units (0.001 USDC).
+## ⚠️ Privacy & Security
+- Load `PRIVATE_KEY` from environment variables only.
+- In TEE (Trusted Execution Environments), ensure the SDK is configured for the specific chain environment.
+
+---
+_Reference implementation for the Autonomous AI Economy._

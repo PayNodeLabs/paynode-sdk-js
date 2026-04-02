@@ -6,7 +6,9 @@ import { parseUnits } from 'ethers';
 import {
   BASE_RPC_URLS,
   PAYNODE_ROUTER_ADDRESS,
-  BASE_USDC_ADDRESS
+  BASE_USDC_ADDRESS,
+  PROTOCOL_VERSION,
+  SDK_VERSION
 } from '../constants';
 import {
   PaymentRequiredResponse,
@@ -67,7 +69,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
       return null;
     };
 
-    const v2PayloadHeader = getHeader('PAYMENT-SIGNATURE') || getHeader('X-402-Payload');
+    const v2PayloadHeader = getHeader('PAYMENT-SIGNATURE') || getHeader('X-402-Payload'); // COMPAT: X-402-Payload is a legacy alias for PAYMENT-SIGNATURE
     let orderId = getHeader('X-402-Order-Id');
 
     if (!orderId) {
@@ -94,21 +96,28 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
           }
 
           unifiedPayload = {
-            version: "2.2.2",
+            x402Version: PROTOCOL_VERSION as any,
             type: parsed._paynode?.type || inferredType,
             orderId: internalOrderId,
             router: parsed.accepted?.router,
-            payload: parsed.payload
+            payload: parsed.payload,
+            _paynode: {
+              sdkVersion: SDK_VERSION
+            }
           };
           orderId = internalOrderId;
-        } else if (typeof parsed.version === 'string' && (parsed.version.startsWith("2.3") || parsed.version.startsWith("2.2"))) {
-          // Legacy PayNode format
-          unifiedPayload = parsed;
-          if (unifiedPayload?.orderId) {
-            orderId = unifiedPayload.orderId;
-          } else if ((unifiedPayload as any)?.order_id) {
-            orderId = (unifiedPayload as any).order_id;
-          }
+        } else if (typeof (parsed.version || parsed.x402Version) === 'string' || typeof parsed.version === 'string') {
+          // Legacy PayNode format or old x402 V2 drafts
+          unifiedPayload = {
+            x402Version: PROTOCOL_VERSION as any,
+            type: parsed.type || (parsed.payload?.txHash ? "onchain" : "eip3009"),
+            orderId: parsed.orderId || parsed.order_id || orderId || `legacy_${Date.now()}`,
+            payload: parsed.payload,
+            _paynode: {
+              sdkVersion: SDK_VERSION
+            }
+          };
+          orderId = unifiedPayload.orderId;
         }
       } catch (e) {
         console.error("❌ [PayNode-Middleware] Failed to decode payment payload header:", e);
@@ -139,7 +148,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
         if (res.set) {
           res.set('PAYMENT-RESPONSE', b64Response);
-          res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility
+          res.set('X-PAYMENT-RESPONSE', b64Response); // COMPAT (legacy): deprecated alias for PAYMENT-RESPONSE
         }
 
         req.paynode = { unifiedPayload, orderId };
@@ -156,7 +165,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
         if (res.set) {
           res.set('PAYMENT-RESPONSE', b64Response);
-          res.set('X-PAYMENT-RESPONSE', b64Response); // Compatibility
+          res.set('X-PAYMENT-RESPONSE', b64Response); // COMPAT (legacy): deprecated alias for PAYMENT-RESPONSE
         }
 
         return res.status(403).json({
@@ -169,13 +178,14 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
     // No valid payment found, return 402 with appropriate headers
     const v2Response: PaymentRequiredResponse = {
-      x402Version: 2,
+      x402Version: PROTOCOL_VERSION as any,
       error: "Payment Required by PayNode",
       resource: {
         url: req.protocol + '://' + req.get('host') + (req.originalUrl || req.url),
         description: options.description || "Protected Resource",
         mimeType: getHeader('accept') || "application/json"
       },
+      orderId: orderId || undefined,
       accepts: [
         {
           scheme: "exact",
@@ -207,7 +217,7 @@ export const x402Gate = (options: PayNodeMiddlewareOptions) => {
 
     if (res.set) {
       res.set('PAYMENT-REQUIRED', b64Required);
-      res.set('X-402-Required', b64Required);
+      res.set('X-402-Required', b64Required); // COMPAT (legacy): deprecated alias for PAYMENT-REQUIRED
       res.set('X-402-Order-Id', orderId);
     }
 

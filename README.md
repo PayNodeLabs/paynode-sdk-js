@@ -1,14 +1,32 @@
-# PayNode JavaScript SDK
+# PayNode Master SDK (JS/TS)
+
+> [!NOTE]
+> Compatibility policy & legacy header aliases are documented in [COMPATIBILITY.md](./COMPATIBILITY.md).
 
 [![Official Documentation](https://img.shields.io/badge/Docs-docs.paynode.dev-00ff88?style=for-the-badge&logo=readthedocs)](https://docs.paynode.dev)
 [![NPM Version](https://img.shields.io/npm/v/@paynodelabs/sdk-js.svg?style=for-the-badge)](https://www.npmjs.com/package/@paynodelabs/sdk-js)
+[![License](https://img.shields.io/github/license/paynodeprotocol/paynode?style=for-the-badge)](LICENSE)
 
-The official TypeScript/JavaScript SDK for the **PayNode Protocol (v2.2.1)**. PayNode is a stateless, non-custodial M2M payment gateway that standardizes the HTTP 402 "Payment Required" flow for AI Agents, with support for both on-chain receipts and off-chain signatures (EIP-3009).
+The **Master SDK** for the [PayNode Protocol](https://paynode.dev). This JavaScript/TypeScript implementation serves as the **Reference Implementation** for the x402 V2 protocol. All future SDKs (Python, Go, Rust, etc.) are built following the architectural patterns and logic established in this codebase.
 
-## 📖 Read the Docs
+The current baseline and cleanup requirements for turning `sdk-js` into the formal multi-language source of truth are documented in [`meta/MULTI_LANGUAGE_BASELINE.md`](../../meta/MULTI_LANGUAGE_BASELINE.md). The protocol source of truth lives in [`meta/SPEC.md`](../../meta/SPEC.md).
 
-**For complete installation guides, advanced usage, API references, and architecture details, please visit our official documentation:**
-👉 **[docs.paynode.dev](https://docs.paynode.dev)**
+PayNode is a stateless, non-custodial M2M payment gateway that standardizes the HTTP 402 "Payment Required" flow for AI Agents, enabling seamless USDC settlement on Base L2.
+
+---
+
+## 🏗️ Reference Implementation Status
+
+As the **Master SDK**, `sdk-js` defines the gold standard for:
+- **x402 V2 Handshake**: The JSON-based negotiation protocol between Agents and Merchants.
+- **Dual-Mode Settlement**: Seamless switching between high-speed off-chain signatures (EIP-3009) and robust on-chain receipts.
+- **Proof-of-Intent**: Standardized cryptographic signatures for M2M commerce.
+- **Stateless Verification**: Logic for verifying payments without requiring complex backend databases.
+
+> [!TIP]
+> Developers building PayNode SDKs for other languages should treat this repository as the **Source of Truth** for internal logic and protocol compliance.
+
+---
 
 ## ⚡ Quick Start
 
@@ -19,102 +37,92 @@ npm install @paynodelabs/sdk-js ethers
 ```
 
 ### Agent Client (Payer)
+The `PayNodeAgentClient` automatically identifies 402 challenges and executes the best settlement path (On-chain or EIP-3009).
 
 ```typescript
 import { PayNodeAgentClient } from "@paynodelabs/sdk-js";
 
-const client = new PayNodeAgentClient("YOUR_AGENT_PRIVATE_KEY", ["https://mainnet.base.org", "https://rpc.ankr.com/base"]);
+// Initialize with Private Key and Base RPC
+const client = new PayNodeAgentClient("YOUR_PRIVATE_KEY", ["https://mainnet.base.org"]);
 
 async function main() {
-  // Automatically handles 402 challenges, pays USDC, and retries the request
+  // Automatically handles 402 challenges, settles USDC, and retries the request
   const response = await client.requestGate("https://api.merchant.com/premium-data");
-  console.log(await response.text());
+  const result = await response.json();
+  console.log("Success:", result);
 }
 main();
 ```
 
-### Key Features (v2.2.1)
-- **Zero-Wait Checkout**: API response speed drops from 5 seconds to **under 50ms** by using local signatures instead of waiting for on-chain inclusion.
-- **Double-Spend Protection**: 
-  - **L1 (Memory)**: High-speed local replay protection via `IdempotencyStore`.
-  - **L2 (RPC)**: Real-time on-chain `authorizationState` verification.
-- **Empty-Wallet Proof**: Integrated `balanceOf` probes to block malicious agents using empty wallets to generate valid signatures.
-- **EIP-3009 Support**: Sign payments off-chain using `TransferWithAuthorization`.
-- **X402 V2 Protocol**: JSON-based handshake for structured agent interaction.
-- **Dual Flow**: Automatic switch between V1 (on-chain receipts) and V2 (off-chain signatures).
+### Merchant Gateway (Seller)
+Starting from **v2.3.0**, the SDK provides a unified middleware for **PayNode Market Proxy** requests. It handles discovery probes, signature verification, and body unwrap in a single line.
 
-## 🗺️ Roadmap
-- **TRON Support**: USDT (TRC-20) payment integration.
-- **Solana Support**: SPL USDC/USDT payment integration.
-- **Cross-chain**: Universal settlement via bridges.
+```typescript
+import { PayNodeMerchant } from "@paynodelabs/sdk-js";
+import express from "express";
 
-## 🚀 Run the Demo
+const app = express();
+const merchant = new PayNodeMerchant({
+  sharedSecret: "YOUR_MARKET_SECRET" // Obtainable from PayNode Market Hub
+});
 
-The SDK includes a full merchant/agent demonstration in the `examples/` directory.
-
-### 1. Setup Environment
-
-```bash
-cp .env.example .env
-# Edit .env with your PRIVATE_KEY and RPC_URL
+// Unified Middleware (Manifest + Auth + Discovery)
+app.post("/api/v1/tools", merchant.middleware({
+    manifest: {
+      slug: "gpt-researcher",
+      name: "GPT Researcher",
+      description: "Research endpoint",
+      price_per_call: "0.05",
+      currency: "USDC"
+    },
+    price: "0.05"  // Also set price directly — manifest.price_per_call is for Market Hub sync only
+  }), (req, res) => {
+    // req.body is automatically unwrapped for valid Market Proxy requests
+    res.json({ result: "Data for " + req.body.query });
+  }
+);
 ```
-
-### 2. Get Test Tokens (Required for Base Sepolia)
-
-If you're testing on Sepolia, run the helper script to mint 1,000 mock USDC:
-
-```bash
-npx ts-node examples/mint-test-tokens.ts
-```
-
-### 3. Run the Merchant Server (Express)
-
-```bash
-npx ts-node examples/express-server.ts
-```
-
-### 4. Run the Agent Client
-
-In another terminal:
-
-```bash
-npx ts-node examples/agent-client.ts
-```
-
-The demo will perform a full loop: `402 Handshake -> On-chain Payment -> 200 Verification`.
 
 ---
 
-## 📦 Publishing to NPM
+## 🚀 Key Features
 
-To publish a new version of the SDK:
-
-1. **Build the project**:
-   ```bash
-   npm run build
-   ```
-2. **Login to NPM** (if not already):
-   ```bash
-   npm login
-   ```
-3. **Publish**:
-   ```bash
-   npm publish --access public
-   ```
+- **Zero-Wait Checkout**: Off-chain EIP-3009 signatures allow **<50ms** checkout times by bypassing block confirmation delays.
+- **Autonomous Recovery**: Built-in RPC failover and retry logic for high-availability agent environments.
+- **Double-Spend Protection**: Memory-efficient `IdempotencyStore` for high-frequency replay protection.
+- **EIP-2612 & EIP-3009**: Native support for gasless approvals and off-chain transfers.
+- **Market Proxy Middleware**: Drop-in Express support for PayNode Market discovery, authentication, and payload unwrap.
 
 ---
 
-## Versioning Guide
+## 🧭 Roadmap & Ecosystem
 
-PayNode uses two distinct versioning schemes:
+As the lead SDK, this package drives the protocol forward. Current initiatives:
+- 🐍 **Python SDK**: Porting `sdk-js` logic to Python for LangChain/AutoGPT integration.
+- 🦀 **Rust SDK**: High-performance implementation for edge compute.
+- 📡 **Cross-chain Settlement**: Integration with Solana (USDC) and TRON (USDT).
 
-| Version Type | Description | Current Value |
-| :--- | :--- | :--- |
-| **Protocol Version** | On-chain contracts & core x402 data schema. | `1.4.0` |
-| **SDK/Product Version** | Software package version (npm/SemVer). | `2.2.2` |
+---
 
-> [!NOTE]
-> Protocol Version changes imply breaking changes in verification or contract interfaces. SDK Version changes may include features, fixes, or performance improvements without altering protocol logic.
+## 🛠️ Development & Testing
+
+### Run the Demo
+1. **Setup Env**: `cp .env.example .env` and set `CLIENT_PRIVATE_KEY`. If you want to run the merchant demo too, also set `MERCHANT_ADDRESS`.
+2. **Mint Test USDC**: `npx ts-node examples/mint-test-tokens.ts` (Base Sepolia).
+3. **Start Merchant**: `npm run example:server`
+4. **Run Agent**: `npx ts-node examples/agent-client.ts`
+
+---
+
+## 📖 Versioning
+
+| Component | Current Version |
+| :--- | :--- |
+| **Protocol (x402)** | `v2` |
+| **SDK Implementation** | `v2.4.0` |
+
+> [!IMPORTANT]
+> Protocol and SDK package versioning are not the same thing. Treat the protocol as `x402 v2`, and treat `2.4.0` as the current JS SDK implementation version.
 
 ---
 

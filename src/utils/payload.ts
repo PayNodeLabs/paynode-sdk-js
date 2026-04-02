@@ -1,4 +1,5 @@
 import { UnifiedPaymentPayload } from '../types/x402';
+import { SDK_VERSION } from '../constants';
 
 export class X402PayloadHelper {
   /**
@@ -30,11 +31,14 @@ export class X402PayloadHelper {
         }
 
         return {
-          version: "2.2.2",
+          x402Version: 2,
           type: parsed._paynode?.type || inferredType,
           orderId: parsed._paynode?.orderId || fallbackOrderId || "",
           router: parsed.accepted?.router || parsed.router,
-          payload: parsed.payload
+          payload: parsed.payload,
+          _paynode: {
+            sdkVersion: SDK_VERSION
+          }
         };
       }
 
@@ -42,7 +46,11 @@ export class X402PayloadHelper {
       if (typeof parsed.version === 'string' && (parsed.version.startsWith("2.2") || parsed.version.startsWith("2.3"))) {
         return {
           ...parsed,
-          orderId: parsed.orderId || parsed.order_id || fallbackOrderId || ""
+          x402Version: parsed.x402Version || 2,
+          orderId: parsed.orderId || parsed.order_id || fallbackOrderId || "",
+          _paynode: parsed._paynode || {
+            sdkVersion: parsed.version
+          }
         } as UnifiedPaymentPayload;
       }
 
