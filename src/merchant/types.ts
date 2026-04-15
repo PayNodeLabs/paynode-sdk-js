@@ -15,6 +15,7 @@ export interface ApiManifest {
   network?: 'mainnet' | 'testnet';
   input_schema?: Record<string, any>;
   sample_response?: Record<string, any>;
+  headers_template?: Record<string, string>;
 }
 
 export interface PayNodeRequestContext {
