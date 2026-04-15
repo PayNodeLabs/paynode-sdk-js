@@ -24,6 +24,8 @@ export interface WebhookConfig {
   onError?: (error: Error, event: PaymentEvent) => void;
   /** Optional: callback when a webhook delivery succeeds */
   onSuccess?: (event: PaymentEvent) => void;
+  /** Optional: suppress logging (default: false) */
+  quiet?: boolean;
 }
 
 /**
@@ -99,12 +101,12 @@ export class PayNodeWebhookNotifier {
    */
   async start(fromBlock?: number): Promise<void> {
     if (this.timer) {
-      console.warn('[PayNode Webhook] Already running.');
+      if (!this.config.quiet) console.warn('[PayNode Webhook] Already running.');
       return;
     }
 
     this.lastBlock = fromBlock ?? (await this.provider.getBlockNumber());
-    console.log(`🔔 [PayNode Webhook] Listening from block ${this.lastBlock} on ${this.config.contractAddress}`);
+    if (!this.config.quiet) console.log(`🔔 [PayNode Webhook] Listening from block ${this.lastBlock} on ${this.config.contractAddress}`);
 
     this.timer = setInterval(() => this.poll(), this.pollInterval);
   }
@@ -116,7 +118,7 @@ export class PayNodeWebhookNotifier {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log('🔕 [PayNode Webhook] Stopped.');
+      if (!this.config.quiet) console.log('🔕 [PayNode Webhook] Stopped.');
     }
   }
 
@@ -146,7 +148,7 @@ export class PayNodeWebhookNotifier {
 
       this.lastBlock = currentBlock;
     } catch (error: any) {
-      console.error(`❌ [PayNode Webhook] Poll error: ${error.message}`);
+      if (!this.config.quiet) console.error(`❌ [PayNode Webhook] Poll error: ${error.message}`);
     } finally {
       this.isProcessing = false;
     }
@@ -205,10 +207,10 @@ export class PayNodeWebhookNotifier {
         throw new Error(`Webhook returned ${response.status}: ${response.statusText}`);
       }
 
-      console.log(`✅ [PayNode Webhook] Delivered tx ${event.txHash.slice(0, 10)}... → ${response.status}`);
+      if (!this.config.quiet) console.log(`✅ [PayNode Webhook] Delivered tx ${event.txHash.slice(0, 10)}... → ${response.status}`);
       this.config.onSuccess?.(event);
     } catch (error: any) {
-      console.error(`⚠️ [PayNode Webhook] Delivery failed (attempt ${attempt}/${MAX_RETRIES}): ${error.message}`);
+      if (!this.config.quiet) console.error(`⚠️ [PayNode Webhook] Delivery failed (attempt ${attempt}/${MAX_RETRIES}): ${error.message}`);
 
       if (attempt < MAX_RETRIES) {
         const backoffMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
@@ -216,7 +218,7 @@ export class PayNodeWebhookNotifier {
         return this.deliver(event, attempt + 1);
       }
 
-      console.error(`❌ [PayNode Webhook] Gave up on tx ${event.txHash} after ${MAX_RETRIES} attempts.`);
+      if (!this.config.quiet) console.error(`❌ [PayNode Webhook] Gave up on tx ${event.txHash} after ${MAX_RETRIES} attempts.`);
       this.config.onError?.(error, event);
     }
   }
