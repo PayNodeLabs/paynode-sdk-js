@@ -184,7 +184,17 @@ export class PayNodeAgentClient {
       throw new PayNodeException(ErrorCode.TransactionFailed, `No compatible payment requirement found for network ${caip2ChainId}`);
     }
 
-    if (!this.options.quiet) console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type || 'onchain'} on ${requirement.network}`);
+    // --- Type Inference ---
+    // x402 v2 'exact' scheme with extra metadata (name/version) is almost always EIP3009 (Permit/TransferWithAuthorization)
+    if (!requirement.type) {
+        if (requirement.scheme === 'exact' && requirement.extra?.version) {
+            requirement.type = 'eip3009';
+        } else {
+            requirement.type = 'onchain';
+        }
+    }
+
+    if (!this.options.quiet) console.log(`💡 [PayNode-JS] Selected payment method: ${requirement.type} on ${requirement.network}`);
 
     // 🛡️ Token Whitelist Check (Case-insensitive)
     const chainTokens = ACCEPTED_TOKENS[chainId]?.map(t => t.toLowerCase());
